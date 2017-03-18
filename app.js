@@ -86,8 +86,8 @@ function randomImage(){
   return __dirname + "/assets/"+image+".jpg";
 }
 
-app.use(/.*\.([jJ][pP]([eE])?[gG])/, express.static(randomImage()));
-app.use(/.*\.([pP][nN][gG])/, express.static(randomImage()));
+app.use(/.*\.([jJ][pP]([eE])?[gG])$/, express.static(randomImage()));
+app.use(/.*\.([pP][nN][gG])$/, express.static(randomImage()));
 
 
 // this line must appear before any express.static calls (or anything else that sends responses)
