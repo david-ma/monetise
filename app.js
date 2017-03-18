@@ -88,7 +88,7 @@ function random() {
 }
 
 function randomImage(){
-  var image = Math.floor(random() * 27);
+  var image = Math.floor(Math.random() * 27);
   console.log("fetching image: "+image);
   return __dirname + "/assets/"+image+".jpg";
 }
