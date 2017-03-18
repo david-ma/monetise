@@ -14,6 +14,7 @@ var querystring = require('querystring');
 var express = require('express');
 var unblocker = require('unblocker');
 var Transform = require('stream').Transform;
+// var fs = require("fs");
 
 var app = express();
 
@@ -52,20 +53,52 @@ function googleAnalyticsMiddleware(data) {
     }
 }
 
+
+// This attempt did not work, caused a memory leak somehow
+// function monetiseImages (data) {
+//   var regex = /^image\/.*/
+//   if (regex.test(data.contentType)) {  
+//       // https://nodejs.org/api/stream.html#stream_transform
+//       data.stream = data.stream.pipe(new Transform({
+//           decodeStrings: false,
+//           transform: function(chunk, encoding, next) {
+//             var that = this;
+//             fs.readFile('public/images/1.jpeg', function(err,file) {
+//               that.push(file);
+//               next();
+//             })
+//           }
+//       }));
+//   }
+// }
+
 var unblockerConfig = {
     prefix: '/proxy/',
     responseMiddleware: [
+//         monetiseImages, // This attempt didn't work. Don't use it.
         googleAnalyticsMiddleware
     ]
 };
 
+function randomImage(){
+  var image = Math.floor(Math.random() * 27);
+  console.log("fetching image: "+image);
+  return __dirname + "/assets/"+image+".jpg";
+}
+
+app.use(/.*\.([jJ][pP]([eE])?[gG])/, express.static(randomImage()));
+app.use(/.*\.([pP][nN][gG])/, express.static(randomImage()));
 
 
 // this line must appear before any express.static calls (or anything else that sends responses)
+// ...otherwise the express engine will mess with it!!! Which is what I want! :) -DKGM
 app.use(unblocker(unblockerConfig));
 
 // serve up static files *after* the proxy is run
 app.use('/', express.static(__dirname + '/public'));
+
+
+
 
 // this is for users who's form actually submitted due to JS being disabled or whatever
 app.get("/no-js", function(req, res) {
@@ -77,3 +110,18 @@ app.get("/no-js", function(req, res) {
 
 // for compatibility with gatlin and other servers, export the app rather than passing it directly to http.createServer
 module.exports = app;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
