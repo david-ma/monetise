@@ -80,8 +80,15 @@ var unblockerConfig = {
     ]
 };
 
+var seed = Math.floor(Math.random() * 1000);
+
+function random() {
+    var x = Math.sin(seed++) * 10000;
+    return x - Math.floor(x);
+}
+
 function randomImage(){
-  var image = Math.floor(Math.random() * 27);
+  var image = Math.floor(random() * 27);
   console.log("fetching image: "+image);
   return __dirname + "/assets/"+image+".jpg";
 }

@@ -8,7 +8,7 @@
     "start": "node ./node_modules/gatling/gatling.js ./app.js"
   },
   "author": "David Ma (@Frostickle)",
-  "license": "MIT",
+  "license": "GPL v3",
   "dependencies": {
     "express": "^4.15.2",
     "gatling": "^1.2.0",
