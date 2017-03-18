@@ -81,7 +81,7 @@ var unblockerConfig = {
 };
 
 var seed = Math.floor(Math.random() * 1000);
-
+console.log("Ok, this thread is seeded with: "+seed);
 function random() {
     var x = Math.sin(seed++) * 10000;
     return x - Math.floor(x);
