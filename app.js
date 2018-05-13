@@ -14,7 +14,7 @@ var querystring = require('querystring');
 var express = require('express');
 var unblocker = require('unblocker');
 var Transform = require('stream').Transform;
-// var fs = require("fs");
+var fs = require("fs");
 
 var app = express();
 
@@ -80,21 +80,28 @@ var unblockerConfig = {
     ]
 };
 
-var seed = Math.floor(Math.random() * 1000);
+// var seed = Math.floor(Math.random() * 1000);
+var seed = Math.abs(Math.floor(Math.sin(process.pid)*10000));
 console.log("Ok, this thread is seeded with: "+seed);
 function random() {
     var x = Math.sin(seed++) * 10000;
     return x - Math.floor(x);
 }
 
-function randomImage(){
-  var image = Math.floor(Math.random() * 27);
-  console.log("fetching image: "+image);
-  return __dirname + "/assets/"+image+".jpg";
+function randomImage(request, response){
+    var image = Math.floor(Math.random() * 27);
+    console.log("fetching image: "+image);
+
+    var filename = __dirname + "/assets/"+image+".jpg";
+
+    fs.readFile(filename, "binary", function(err,file) {
+        response.writeHead(200, {'Content-Type': 'image/jpeg'});
+        response.end(file, "binary");
+    });
 }
 
-app.use(/.*\.([jJ][pP]([eE])?[gG])$/, express.static(randomImage()));
-app.use(/.*\.([pP][nN][gG])$/, express.static(randomImage()));
+app.use(/.*\.([jJ][pP]([eE])?[gG])$/, randomImage);
+app.use(/.*\.([pP][nN][gG])$/, randomImage);
 
 
 // this line must appear before any express.static calls (or anything else that sends responses)
