@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node ./node_modules/gatling/gatling.js ./app.js"
+    "start": "node ./node_modules/gatling/gatling.js -p7777 ./app.js"
   },
   "author": "David Ma (@Frostickle)",
   "license": "GPL v3",
