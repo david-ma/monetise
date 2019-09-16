@@ -10,6 +10,7 @@
   "author": "David Ma (@Frostickle)",
   "license": "GPL v3",
   "dependencies": {
+    "cookie-parser": "^1.4.4",
     "express": "^4.15.2",
     "gatling": "^1.2.0",
     "unblocker": "^1.1.4"

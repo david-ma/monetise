@@ -16,7 +16,8 @@ var unblocker = require('unblocker');
 var Transform = require('stream').Transform;
 var fs = require("fs");
 
-var app = express();
+const   app = express(),
+        cookieParser = require('cookie-parser');
 
 var google_analytics_id = process.env.GA_ID || "UA-49861162-2";
 
@@ -52,6 +53,38 @@ function googleAnalyticsMiddleware(data) {
         }));
     }
 }
+
+
+
+
+
+app.use(cookieParser());
+// Write middleware here which checks /proxy/ stuff if it has a cookie set.
+// If no cookie, send to homepage.
+app.use('/proxy', (req, res, next)=>{
+
+    try {
+        const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress || "Unknown";
+        console.log(`request for: ${req.url} from ${ip}`);
+
+        if(req.cookies && req.cookies.cookieName && req.cookies.cookieName === 'cookieValue') {
+            console.log("Valid");
+            next()
+        } else {
+            console.log("Bot");
+            res.redirect("/");
+        }
+    } catch(e) {
+        console.log("Error", e);
+    }
+
+    next()
+});
+
+
+
+
+
 
 
 // This attempt did not work, caused a memory leak somehow
@@ -107,6 +140,24 @@ app.use(/.*\.([pP][nN][gG])$/, randomImage);
 // this line must appear before any express.static calls (or anything else that sends responses)
 // ...otherwise the express engine will mess with it!!! Which is what I want! :) -DKGM
 app.use(unblocker(unblockerConfig));
+
+
+
+
+// Set a cookie when visiting any page.
+app.get('/', (req, res, next)=>{
+    let options = {
+        maxAge: 1000 * 60 * 15 // would expire after 15 minutes
+    };
+
+    // Set cookie
+    res.cookie('cookieName', 'cookieValue', options);
+    next();
+});
+
+
+
+
 
 // serve up static files *after* the proxy is run
 app.use('/', express.static(__dirname + '/public'));
