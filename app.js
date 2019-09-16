@@ -65,13 +65,14 @@ function cookieChecker(data) {
     const host = data.clientRequest.headers.host;
 
     try {
-        const ip = data.clientRequest.headers['x-forwarded-for'] || data.clientRequest.connection.remoteAddress || "Unknown";
-        console.log(`request for: ${data.clientRequest.url} from ${ip}`);
+        const ip = data.clientRequest.headers['x-real-ip'] || data.clientRequest.headers['x-forwarded-for'] || data.clientRequest.connection.remoteAddress || "Unknown";
 
         if( data.clientRequest.cookies.cookieName !== 'cookieValue') {
+            console.log(`Valid request for: ${data.clientRequest.url} from ${ip}`);
             data.clientResponse.writeHead(303, {Location: "//"+host});
             data.clientResponse.end();
         }
+        console.log(`Bot request for: ${data.clientRequest.url} from ${ip}`);
     } catch (e) {
         data.clientResponse.writeHead(303, {Location: "//"+host});
         data.clientResponse.end();
