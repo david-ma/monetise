@@ -61,25 +61,22 @@ function googleAnalyticsMiddleware(data) {
 app.use(cookieParser());
 // Write middleware here which checks /proxy/ stuff if it has a cookie set.
 // If no cookie, send to homepage.
-app.use('/proxy', (req, res, next)=>{
+function cookieChecker(data) {
+    const host = data.clientRequest.headers.host;
 
     try {
-        const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress || "Unknown";
-        console.log(`request for: ${req.url} from ${ip}`);
+        const ip = data.clientRequest.headers['x-forwarded-for'] || data.clientRequest.connection.remoteAddress || "Unknown";
+        console.log(`request for: ${data.clientRequest.url} from ${ip}`);
 
-        if(req.cookies && req.cookies.cookieName && req.cookies.cookieName === 'cookieValue') {
-            console.log("Valid");
-            next()
-        } else {
-            console.log("Bot");
-            res.redirect("/");
+        if( data.clientRequest.cookies.cookieName !== 'cookieValue') {
+            data.clientResponse.writeHead(303, {Location: "//"+host});
+            data.clientResponse.end();
         }
-    } catch(e) {
-        console.log("Error", e);
+    } catch (e) {
+        data.clientResponse.writeHead(303, {Location: "//"+host});
+        data.clientResponse.end();
     }
-
-    next()
-});
+}
 
 
 
@@ -107,6 +104,9 @@ app.use('/proxy', (req, res, next)=>{
 
 var unblockerConfig = {
     prefix: '/proxy/',
+    requestMiddleware: [
+        cookieChecker
+    ],
     responseMiddleware: [
 //         monetiseImages, // This attempt didn't work. Don't use it.
         googleAnalyticsMiddleware
@@ -123,7 +123,7 @@ function random() {
 
 function randomImage(request, response){
     var image = Math.floor(Math.random() * 67);
-    console.log("fetching image: "+image);
+    // console.log("fetching image: "+image);
 
     var filename = __dirname + "/assets/"+image+".jpg";
 
