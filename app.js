@@ -115,15 +115,8 @@ var unblockerConfig = {
     ]
 };
 
-// var seed = Math.floor(Math.random() * 1000);
-var seed = Math.abs(Math.floor(Math.sin(process.pid)*10000));
-console.log("Ok, this thread is seeded with: "+seed);
-function random() {
-    var x = Math.sin(seed++) * 10000;
-    return x - Math.floor(x);
-}
-
 function randomImage(request, response){
+    // 67 is the number of images in my library
     var image = Math.floor(Math.random() * 67);
     // console.log("fetching image: "+image);
 
