@@ -67,7 +67,7 @@ function cookieChecker(data) {
     try {
         const ip = data.clientRequest.headers['x-real-ip'] || data.clientRequest.headers['x-forwarded-for'] || data.clientRequest.connection.remoteAddress || "Unknown";
 
-        if( data.clientRequest.cookies.cookieName !== 'cookieValue') {
+        if( data.clientRequest.cookies.cookieName !== `Cookie for ${ip}`) {
             console.log(`Bot request for: ${data.clientRequest.url} from ${ip}`);
             data.clientResponse.writeHead(303, {Location: `//${host}?goto=${data.clientRequest.url}`});
             data.clientResponse.end();
@@ -145,15 +145,16 @@ app.get('/', (req, res, next)=>{
         maxAge: 1000 * 60 * 15 // would expire after 15 minutes
     };
 
+    const ip = req.headers['x-real-ip'] || req.headers['x-forwarded-for'] || req.connection.remoteAddress || "Unknown";
+
     try {
-        const ip = req.headers['x-real-ip'] || req.headers['x-forwarded-for'] || req.connection.remoteAddress || "Unknown";
         console.log(`Setting cookies for: ${req.url} from ${ip}`);
     } catch (e) {
         console.log("Error", e);
     }
 
     // Set cookie
-    res.cookie('cookieName', 'cookieValue', options);
+    res.cookie('cookieName', `Cookie for ${ip}`, options);
     next();
 });
 
