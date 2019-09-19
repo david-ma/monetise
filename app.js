@@ -67,12 +67,16 @@ function cookieChecker(data) {
     try {
         const ip = data.clientRequest.headers['x-real-ip'] || data.clientRequest.headers['x-forwarded-for'] || data.clientRequest.connection.remoteAddress || "Unknown";
 
-        if( data.clientRequest.cookies.cookieName !== `Cookie for ${ip}`) {
+        if( data.clientRequest.cookies.cookieName === `Cookie for ${ip}`) {
+            console.log(`Valid request for: ${data.clientRequest.url} from ${ip}`);
+        } else if ( data.clientRequest.cookies.cookieName ){
+            console.log(`Bot has wrong IP address in cookie`);
+            data.clientResponse.writeHead(403);
+            data.clientResponse.end("Go away");
+        } else {
             console.log(`Bot request for: ${data.clientRequest.url} from ${ip}`);
             data.clientResponse.writeHead(303, {Location: `//${host}?goto=${data.clientRequest.url}`});
             data.clientResponse.end();
-        } else {
-            console.log(`Valid request for: ${data.clientRequest.url} from ${ip}`);
         }
     } catch (e) {
         data.clientResponse.writeHead(303, {Location: `//${host}?goto=${data.clientRequest.url}`});
