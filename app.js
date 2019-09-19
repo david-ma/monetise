@@ -70,7 +70,7 @@ function cookieChecker(data) {
         if( data.clientRequest.cookies.cookieName === `Cookie for ${ip}`) {
             console.log(`Valid request for: ${data.clientRequest.url} from ${ip}`);
         } else if ( data.clientRequest.cookies.cookieName ){
-            console.log(`Bot has wrong IP address in cookie`);
+            console.log(`Bot from ${ip} using ${data.clientRequest.cookies.cookieName}`);
             data.clientResponse.writeHead(403);
             data.clientResponse.end("Go away");
         } else {
