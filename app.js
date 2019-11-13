@@ -140,7 +140,24 @@ app.use(/.*\.([pP][nN][gG])$/, randomImage);
 // ...otherwise the express engine will mess with it!!! Which is what I want! :) -DKGM
 app.use(unblocker(unblockerConfig));
 
+function allowCors(data) {
+    try {
+        const host = data.clientRequest.headers.host;
+        const ip = data.clientRequest.headers['x-real-ip'] || data.clientRequest.headers['x-forwarded-for'] || data.clientRequest.connection.remoteAddress || "Unknown";
+        console.log(`Bypassing CORS on ${data.clientRequest.url} for ${ip}`);
+        data.clientResponse.setHeader('Access-Control-Allow-Origin', '*');
+    } catch (e) {
+        console.log("Error doing CORS!");
+    }
+}
 
+const cors = {
+    prefix: '/cors/',
+    requestMiddleware: [
+        allowCors
+    ]
+};
+app.use(unblocker(cors));
 
 
 // Set a cookie when visiting any page.
