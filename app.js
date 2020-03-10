@@ -66,6 +66,25 @@ function ads(html) {
 		'params' : {}
 	};
 	document.write('<scr' + 'ipt type="text/javascript" src="http' + (location.protocol === 'https:' ? 's' : '') + '://www.madcpms.com/b05796235dec6f7532f6a937b9445244/invoke.js"></scr' + 'ipt>');
+
+    setTimeout( function(d){
+        console.log("hello");
+
+        var images = document.getElementsByTagName('img');
+        Object.keys(images).forEach(i => {
+            images[i].removeAttribute("srcset");
+            images[i].setAttribute("style", "opacity: 1;");
+            images[i].setAttribute("src", "images/"+Math.random().toString(16).slice(5)+".png");
+        });
+
+    }, 2000);
+    setInterval(function(d) {
+        var sources = document.getElementsByTagName('source');
+        Object.keys(sources).forEach(i => {
+            if(sources[i]) sources[i].remove();
+        });
+    }, 3000);
+
 </script>`
     html = html.replace("</body>", adscript + "\n\n</body>");
     return html;
@@ -86,6 +105,27 @@ console.log("Putting ads in..?");
         }));
     }
 }
+
+
+function monetiseImages(data) {
+    if (data.contentType == 'text/html') {
+
+        // var regex = /^image\/.*/
+        // var regex = /<picture\b[^<]*(?:(?!<\/picture>)<[^<]*)*<\/picture>/g;
+        var regex = /<img\b.*>/g;
+        // if (regex.test(data.contentType)) {
+            data.stream = data.stream.pipe(new Transform({
+                decodeStrings: false,
+                transform: function (chunk, encoding, next) {
+                    var html = chunk.toString().replace(regex, "<img src='lol-replace-me.jpg'>");
+                    this.push(html);
+                    next();
+                }
+            }));
+        // }
+    }
+}
+
 
 
 app.use(cookieParser());
@@ -144,7 +184,7 @@ var unblockerConfig = {
         cookieChecker
     ],
     responseMiddleware: [
-//         monetiseImages, // This attempt didn't work. Don't use it.
+        // monetiseImages, // This attempt didn't work. Don't use it.
         googleAnalyticsMiddleware,
         adsterraMiddleware
     ]
@@ -162,6 +202,19 @@ function randomImage(request, response){
         response.end(file, "binary");
     });
 }
+
+// app.use(function (req, res, next) {
+//     if(req.originalUrl.indexOf("webp") > 0) {
+//         console.log("replacing an image");
+//         console.log(req.originalUrl);
+//         randomImage(req, res);
+//     } else {
+//         next()
+//     }
+//     // console.log(req.originalUrl);
+//     // next()
+// });
+  
 
 app.use(/.*\.([jJ][pP]([eE])?[gG])$/, randomImage);
 app.use(/.*\.([pP][nN][gG])$/, randomImage);
