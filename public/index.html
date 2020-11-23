@@ -102,7 +102,7 @@
 		$('unblocker-form').onsubmit = function(){
 			var url = $('url').value.trim();
 			if(url.substr(0,4) != "http"){
-				url = "http://" + url;
+				url = "//" + url;
 			}
 			window.location.pathname = 'proxy/' + url;
 			return false;
