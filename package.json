@@ -1,6 +1,6 @@
 {
   "name": "monetise",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Monetise Your Website",
   "main": "index.js",
   "scripts": {
@@ -10,9 +10,9 @@
   "author": "David Ma (@Frostickle)",
   "license": "GPL v3",
   "dependencies": {
-    "cookie-parser": "^1.4.4",
-    "express": "^4.15.2",
+    "cookie-parser": "^1.4.5",
+    "express": "^4.17.1",
     "gatling": "^1.2.0",
-    "unblocker": "^1.1.4"
+    "unblocker": "^2.0.6"
   }
 }
