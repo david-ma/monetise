@@ -179,6 +179,7 @@ function cookieChecker(data) {
 // }
 
 var unblockerConfig = {
+    host: 'www.monetiseyourwebsite.com',
     prefix: '/proxy/',
     requestMiddleware: [
         cookieChecker
