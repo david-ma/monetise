@@ -10,9 +10,9 @@
   "author": "David Ma (@Frostickle)",
   "license": "GPL v3",
   "dependencies": {
-    "cookie-parser": "^1.4.5",
+    "cookie-parser": "^1.4.6",
     "express": "^4.17.1",
     "gatling": "^1.2.0",
-    "unblocker": "^2.0.6"
+    "unblocker": "^2.3.0"
   }
 }
