@@ -56,56 +56,6 @@ function googleAnalyticsMiddleware(data) {
 
 
 
-function ads(html) {
-    var adscript = `<script type="text/javascript">
-	atOptions = {
-		'key' : 'b05796235dec6f7532f6a937b9445244',
-		'format' : 'iframe',
-		'height' : 60,
-		'width' : 468,
-		'params' : {}
-	};
-	document.write('<scr' + 'ipt type="text/javascript" src="http' + (location.protocol === 'https:' ? 's' : '') + '://www.madcpms.com/b05796235dec6f7532f6a937b9445244/invoke.js"></scr' + 'ipt>');
-
-    setTimeout( function(d){
-        console.log("hello");
-
-        var images = document.getElementsByTagName('img');
-        Object.keys(images).forEach(i => {
-            images[i].removeAttribute("srcset");
-            images[i].setAttribute("style", "opacity: 1;");
-            images[i].setAttribute("src", "images/"+Math.random().toString(16).slice(5)+".png");
-        });
-
-    }, 2000);
-    setInterval(function(d) {
-        var sources = document.getElementsByTagName('source');
-        Object.keys(sources).forEach(i => {
-            if(sources[i]) sources[i].remove();
-        });
-    }, 3000);
-
-</script>`
-    html = html.replace("</body>", adscript + "\n\n</body>");
-    return html;
-}
-
-
-function adsterraMiddleware(data) {
-    if (data.contentType == 'text/html') {
-console.log("Putting ads in..?");
-
-        // https://nodejs.org/api/stream.html#stream_transform
-        data.stream = data.stream.pipe(new Transform({
-            decodeStrings: false,
-            transform: function(chunk, encoding, next) {
-                this.push(ads(chunk.toString()));
-                next();
-            }
-        }));
-    }
-}
-
 
 function monetiseImages(data) {
     if (data.contentType == 'text/html') {
@@ -185,9 +135,8 @@ var unblockerConfig = {
         cookieChecker
     ],
     responseMiddleware: [
-        // monetiseImages, // This attempt didn't work. Don't use it.
-        googleAnalyticsMiddleware,
-        adsterraMiddleware
+//         monetiseImages, // This attempt didn't work. Don't use it.
+        googleAnalyticsMiddleware
     ]
 };
 
