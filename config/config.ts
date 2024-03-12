@@ -24,11 +24,29 @@ let config: Thalia.WebsiteConfig = {
         })
         controller.response.end()
         return
+      } else if (
+        // Check if it's an image
+        controller.request.url.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp)$/i)
+      ) {
+        controller.response.writeHead(302, {
+          Location: '/monet',
+        })
+        controller.response.end()
+        return
       } else {
         const handleRequest = unblocker(unblockerConfig)
 
         handleRequest(controller.request, controller.response)
       }
+    },
+    monet: function (controller) {
+      var image = Math.floor(Math.random() * 67)
+
+      // serve a random image by Monet
+      controller.response.writeHead(302, {
+        Location: `/images/assets/${image}.jpg`,
+      })
+      controller.response.end()
     },
   },
 }

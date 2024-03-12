@@ -20,10 +20,24 @@ let config = {
                 controller.response.end();
                 return;
             }
+            else if (controller.request.url.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp)$/i)) {
+                controller.response.writeHead(302, {
+                    Location: '/monet',
+                });
+                controller.response.end();
+                return;
+            }
             else {
                 const handleRequest = unblocker(unblockerConfig);
                 handleRequest(controller.request, controller.response);
             }
+        },
+        monet: function (controller) {
+            var image = Math.floor(Math.random() * 67);
+            controller.response.writeHead(302, {
+                Location: `/images/assets/${image}.jpg`,
+            });
+            controller.response.end();
         },
     },
 };
