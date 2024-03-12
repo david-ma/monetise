@@ -7,19 +7,27 @@ var unblockerConfig = {
   responseMiddleware: [googleAnalyticsMiddleware],
 }
 
+const botIpAddresses = {}
+
 let config: Thalia.WebsiteConfig = {
   controllers: {
     '': function (controller) {
       controller.res.setCookie({ cookieName: controller.ip })
-
-      if (controller.query.goto) {
+      if (botIpAddresses[controller.ip] > 10) {
+        // send to robots.txt
         controller.response.writeHead(302, {
-          Location: controller.query.goto,
+          Location: '/robots.txt',
         })
-        controller.response.end()
-        return
       } else {
-        controller.routeFile(`${__dirname}/../public/index.html`)
+        if (controller.query.goto) {
+          controller.response.writeHead(302, {
+            Location: controller.query.goto,
+          })
+          controller.response.end()
+          return
+        } else {
+          controller.routeFile(`${__dirname}/../public/index.html`)
+        }
       }
     },
     proxy: function (controller) {
@@ -40,6 +48,8 @@ let config: Thalia.WebsiteConfig = {
         !cookies.cookieName ||
         cookies.cookieName !== controller.ip
       ) {
+        botIpAddresses[controller.ip] ? botIpAddresses[controller.ip]++ : 1
+
         controller.response.writeHead(303, {
           Location: `//${controller.request.headers.host}/?goto=${url}`,
         })
