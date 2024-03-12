@@ -41,15 +41,15 @@ let config: Thalia.WebsiteConfig = {
       }
     },
     proxy: function (controller) {
-      const url = controller.request.url
+      let url = controller.request.url
       const sections = url.split('/proxy/')
-      controller.request.url = `${sections[0]}/proxy/${sections.pop()}`
+      url = controller.request.url = `${sections[0]}/proxy/${sections.pop()}`
 
       const cookies = controller.cookies
 
-      if (sections.length > 3) {
+      if (sections.length > 2) {
         controller.response.writeHead(302, {
-          Location: controller.request.url,
+          Location: url,
         })
         controller.response.end()
         return
