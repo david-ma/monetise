@@ -19,8 +19,13 @@ let config = {
             }
             else {
                 if (controller.query.goto) {
+                    const sections = controller.query.goto.split('/proxy/');
+                    let url = sections.pop();
+                    if (url.indexOf('http') !== 0) {
+                        url = `https://${url}`;
+                    }
                     controller.response.writeHead(302, {
-                        Location: controller.query.goto,
+                        Location: `/proxy/${url}`,
                     });
                     controller.response.end();
                     return;

@@ -6,112 +6,76 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Monetise your website</title>
 
-    <style>
-      body {
-        background-color: #eee;
-      }
-
-      .page {
-        background-color: #fff;
-      }
-
-      header {
-        width: 100%;
-        height: 500px;
-        background: #333e52;
-      }
-      header .blur_background {
-        height: 500px;
-        width: 100%;
-        position: absolute;
-        background: url('/images/unsplash.jpg');
-        background-size: cover;
-        background-position: 50% 60%;
-        /* Depending on your photo, you might need to blur the background.
-  -webkit-filter: blur(1px);
-  -moz-filter: blur(1px);
-  -o-filter: blur(1px);
-  -ms-filter: blur(1px);
-  filter: blur(1px);
- */
-      }
-      footer {
-        width: 100%;
-        height: 50px;
-        background: #ddd;
-        position: fixed;
-        bottom: 0;
-      }
-
-      .mask {
-        height: 100%;
-        background: linear-gradient(
-          rgba(0, 0, 0, 0),
-          rgba(0, 0, 0, 0.3),
-          rgba(0, 0, 0, 0.5)
-        );
-      }
-
-      header .container {
-        padding-top: 300px;
-      }
-
-      header h1 {
-        font-size: 60px;
-        color: #eee;
-        margin: 0;
-      }
-      header h2 {
-        font-size: 30px;
-        color: #eee;
-        margin: 0;
-      }
-    </style>
+    <link rel="stylesheet" href="/css/monet.css" />
   </head>
   <body>
-    <header>
-      <div class="blur_background">
-        <div class="mask"></div>
+
+    <section class="container">
+      <div class="row">
+        <div class="col-xs-12">NAV</div>
       </div>
+    </section>
+
+    <section class="hero">
       <div class="container">
         <div class="row">
-          <div class="col-xs-12">
+          <div class="col-sm-6">
             <h1>Monetise Your Website</h1>
             <h2>
-              Instantly monetise any website with our quick and easy service!
+              Instantly Monetise any website with our quick and easy service.
             </h2>
+            <form method="get" id="monetise-form">
+
+              <div class="query">
+                <label>URL:</label>
+                <input type="text" id="goto" name="goto" autofocus="autofocus" placeholder="https://website.com" />
+              </div>
+              <input type="submit" value="Get Started" />
+            </form>
+          </div>
+          <div class="col-sm-6">
+            <img src="/images/unsplash.jpg" />
           </div>
         </div>
       </div>
-    </header>
+    </section>
 
-    <div class="container page">
+    <section class="container body">
       <div class="row">
-        <div class="col-xs-12">
-          <h1>
-            Leveraging Cutting-Edge Synergy: Monetising Your Digital Ecosystem
-          </h1>
-          <p>In this era of dynamic digital convergence, the optimization of web assets has never been more crucial. Harnessing the power of transformative paradigms, we embark on a journey of strategic innovation to unlock the full potential of website monetization. The following paragraphs are a deep dive into the exciting world of web revenue generation, seamlessly segueing into our unique and artistic vision.</p>
+        <div class="col-sm-5 col-sm-offset-1">
+          <img src="https://uploads-ssl.webflow.com/64f7c4b2c62f55fed176df5c/650147f4fee5e884b3b99df2_technical_image.jpg">
+        </div>
+        <div class="col-sm-5">
+          <p>In the dynamic landscape of digital convergence, the optimisation of web assets is essential for online success. At Monetise Your Website, we leverage the power of transformative, AI-driven technologies to revolutionise your online presence. Our innovative, server-side rendering solutions employ cutting-edge NodeJS advancements, transcending the boundaries of traditional web design and ushering in a new era of digital mastery.</p>
         </div>
       </div>
-
       <div class="row">
-        <div class="col-xs-12 col-sm-4">
-          <p>Revolutionary Data-Driven Strategies: By employing advanced predictive analytics and AI-driven algorithms, we can precisely target high-value niches, optimizing ad placements and content distribution to maximize revenue streams.</p>
-          <p>Blockchain-Powered Ad Networks: Our forward-thinking approach incorporates blockchain technology to establish trust, transparency, and efficiency in digital advertising ecosystems, offering unparalleled security for both advertisers and publishers.</p>
-          <p>Dynamic Native Advertising Integration: Seamless integration of native ads ensures a harmonious user experience, fostering audience engagement and brand resonance, ultimately leading to higher click-through rates and conversions.</p>
+        <div class="col-sm-5 col-sm-offset-1">
+          <p>At the heart of our service lies a state-of-the-art, open-source image-replacement algorithm. This groundbreaking technology seamlessly integrates the timeless works of legendary French impressionist Claude Monet into your digital canvas, elevating your website's aesthetic appeal and cultivating an unparalleled user experience.</p>
         </div>
-        <div class="col-xs-12 col-sm-4">
-          <p>AI-Personalized User Journeys: Artificial intelligence analyzes user behavior in real-time, tailoring content and ad delivery to individual preferences, dramatically improving user satisfaction and retention rates.</p>
-          <p>Monetization Gamification: Gamify your website monetization strategy with interactive ad experiences that incentivize user engagement, all while bolstering ad revenues and user satisfaction.</p>
-          <p>Cryptocurrency Payment Gateways: Incorporating cryptocurrencies as a payment option diversifies revenue sources and opens new avenues for global monetization, appealing to tech-savvy audiences.</p>
-        </div>
-        <div class="col-xs-12 col-sm-4">
-          <p>Immersive VR Shopping: Pioneering virtual reality shopping experiences, we seamlessly blend e-commerce and entertainment, enabling users to shop while immersing themselves in captivating digital environments.</p>
-          <p>The Artistic Pivot: As we transition into our true purpose, envision a digital realm where website images are transformed into masterpieces by Claude Monet. Our innovative technology replaces mundane visuals with Impressionist art, creating a visually enchanting and culturally enriching online experience.</p>
+        <div class="col-sm-5">
+          <img src="https://uploads-ssl.webflow.com/64f7c4b2c62f55fed176df5c/65014a1b5ea5cd2c65346c9d_Claude_Monet_1899_Nadar_crop.jpg">
+          </p>
         </div>
       </div>
-    </div>
+      <div class="row">
+        <div class="col-sm-5 col-sm-offset-1">
+          <img src="https://uploads-ssl.webflow.com/64f7c4b2c62f55fed176df5c/65014b3f70c508fc16e7c8b5_Reflections_of_Clouds_on_the_Water-Lily_Pond.jpg">
+        </div>
+        <div class="col-sm-5">
+          <p>Claude Monet, a pioneering figure in the 19th-century Impressionist movement, was renowned for his exceptional ability to capture the transient beauty of light and color. This unwavering dedication to his craft is encapsulated in his meticulous creation of the garden at Giverny, which served as the inspiration for his iconic "Water Lilies" series.</p>
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-sm-5 col-sm-offset-1">
+          <p>At Monetise Your Website, we share Monet's passion for innovation and excellence. Our data-driven solutions empower you to harness the full potential of your online presence, driving sustainable growth and unparalleled success in the digital realm. Together, we will journey through the digital frontier, fusing technology and art to create a masterpiece that reflects the collective brilliance of the open-source community and the enduring elegance of impressionist art.</p>
+        </div>
+        <div class="col-sm-5">
+          <img src="https://uploads-ssl.webflow.com/64f7c4b2c62f55fed176df5c/64f7fd97956c303e965abfff_hero%20image.jpg">
+          </p>
+        </div>
+      </div>
+    </section>
 
     <footer>
       <div class="container">
