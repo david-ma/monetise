@@ -1,18 +1,15 @@
 {
   "name": "monetise",
-  "version": "2.0.0",
-  "description": "Monetise Your Website",
+  "version": "1.0.0",
+  "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node ./node_modules/gatling/gatling.js -p7777 ./app.js"
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "author": "David Ma (@Frostickle)",
-  "license": "GPL v3",
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
   "dependencies": {
-    "cookie-parser": "^1.4.6",
-    "express": "^4.17.1",
-    "gatling": "^1.2.0",
     "unblocker": "^2.3.0"
   }
 }
