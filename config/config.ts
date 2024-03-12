@@ -13,6 +13,9 @@ let config: Thalia.WebsiteConfig = {
   controllers: {
     '': function (controller) {
       controller.res.setCookie({ cookieName: controller.ip })
+
+      // TODO: Should probably be reset after some time..?
+      // This would break a class of students visiting the website
       if (botIpAddresses[controller.ip] > 10) {
         // send to robots.txt
         controller.response.writeHead(302, {
