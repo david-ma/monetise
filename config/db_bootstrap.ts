@@ -15,13 +15,20 @@ let seqOptions: Options = {
 
 import { seqObject } from 'thalia'
 const sequelize = new Sequelize(seqOptions)
+const Site = SiteFactory(sequelize)
+const Visitor = VisitorFactory(sequelize)
+Site.belongsToMany(Visitor, { through: 'SiteVisitor' })
+Visitor.belongsToMany(Site, { through: 'SiteVisitor' })
+
 const seq: seqObject = {
   sequelize,
-  Site: SiteFactory(sequelize),
-  Visitor: VisitorFactory(sequelize)
+  Site,
+  Visitor,
 }
 
 seq.sequelize.sync({
   force: true,
   alter: true,
 })
+
+exports.seq = seq

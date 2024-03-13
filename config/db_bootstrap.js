@@ -14,12 +14,17 @@ let seqOptions = {
     },
 };
 const sequelize = new sequelize_1.Sequelize(seqOptions);
+const Site = (0, models_1.SiteFactory)(sequelize);
+const Visitor = (0, models_1.VisitorFactory)(sequelize);
+Site.belongsToMany(Visitor, { through: 'SiteVisitor' });
+Visitor.belongsToMany(Site, { through: 'SiteVisitor' });
 const seq = {
     sequelize,
-    Site: (0, models_1.SiteFactory)(sequelize),
-    Visitor: (0, models_1.VisitorFactory)(sequelize)
+    Site,
+    Visitor,
 };
 seq.sequelize.sync({
     force: true,
     alter: true,
 });
+exports.seq = seq;

@@ -9,6 +9,8 @@ var unblockerConfig = {
 
 const botIpAddresses = {}
 
+import { SiteStatic, VisitorStatic } from '../models'
+
 let config: Thalia.WebsiteConfig = {
   controllers: {
     '': function (controller) {
@@ -30,11 +32,83 @@ let config: Thalia.WebsiteConfig = {
             url = `https://${url}`
           }
 
-          controller.response.writeHead(302, {
-            Location: `/proxy/${url}`,
-          })
-          controller.response.end()
-          return
+          console.log('IP', controller.ip)
+
+          // Log this visitor
+          const visitors: VisitorStatic = controller.db.Visitor
+          const sites: SiteStatic = controller.db.Site
+          // Visitor.findOrBuild({
+          //   where: {
+          //     ip: "default"
+          //     // ip: controller.ip,
+          //   },
+          //   defaults: {
+          //     ip: "default",
+          //     userAgent: controller.request.headers['user-agent'],
+          //   },
+          // }).then((visitor) => {
+          //   console.log('Visitor recorded!', visitor)
+          // })
+
+          sites
+            .findOrCreate({
+              where: {
+                url: url,
+              },
+              defaults: {
+                url: url,
+                title: 'default',
+                description: 'default',
+                keywords: 'default',
+              },
+            })
+            .then(([site, created]) => {
+              visitors
+                .findOrCreate({
+                  where: {
+                    ip: controller.ip,
+                  },
+                  defaults: {
+                    ip: controller.ip,
+                    userAgent: controller.request.headers['user-agent'],
+                  },
+                })
+                .then(([visitor, created]) => {
+
+                  site.addVisitor(visitor)
+                  // site.visitors.push(visitor)
+                  // site.save()
+
+                  controller.response.writeHead(302, {
+                    Location: `/proxy/${url}`,
+                  })
+                  controller.response.end()
+                  return
+                  // site.addVisitor(visitor)
+                })
+            })
+          // Promise.all([
+          // ]).then(([site, visitor]) => {
+          //   // site[0].addVisitor(visitor[0])
+          // })
+
+          // visitor.create({
+          //   ip: controller.ip,
+          //   userAgent: controller.request.headers['user-agent'],
+          // }).then((visitor) => {
+          //   console.log('Visitor recorded!', visitor)
+
+          //   controller.response.writeHead(302, {
+          //     Location: `/proxy/${url}`,
+          //   })
+          //   controller.response.end()
+          //   return
+          // })
+
+          // .then(([site, created]) => {
+
+          // site.addVisitor(controller.db.Visitor.build({ ip: controller.ip, userAgent: controller.request.headers['user-agent'] }))
+          // })
         } else {
           controller.routeFile(`${__dirname}/../public/index.html`)
         }

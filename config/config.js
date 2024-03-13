@@ -24,11 +24,41 @@ let config = {
                     if (url.indexOf('http') !== 0) {
                         url = `https://${url}`;
                     }
-                    controller.response.writeHead(302, {
-                        Location: `/proxy/${url}`,
+                    console.log('IP', controller.ip);
+                    const visitors = controller.db.Visitor;
+                    const sites = controller.db.Site;
+                    sites
+                        .findOrCreate({
+                        where: {
+                            url: url,
+                        },
+                        defaults: {
+                            url: url,
+                            title: 'default',
+                            description: 'default',
+                            keywords: 'default',
+                        },
+                    })
+                        .then(([site, created]) => {
+                        visitors
+                            .findOrCreate({
+                            where: {
+                                ip: controller.ip,
+                            },
+                            defaults: {
+                                ip: controller.ip,
+                                userAgent: controller.request.headers['user-agent'],
+                            },
+                        })
+                            .then(([visitor, created]) => {
+                            site.addVisitor(visitor);
+                            controller.response.writeHead(302, {
+                                Location: `/proxy/${url}`,
+                            });
+                            controller.response.end();
+                            return;
+                        });
                     });
-                    controller.response.end();
-                    return;
                 }
                 else {
                     controller.routeFile(`${__dirname}/../public/index.html`);
