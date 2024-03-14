@@ -9,16 +9,36 @@ var unblockerConfig = {
 };
 const botIpAddresses = {};
 async function siteVisit(controller) {
-    const url = controller.request.url;
-    return controller.db.Site.findOne({
-        where: {
-            id: 1,
-        },
-    }).then((site) => {
-        if (!site) {
-            return 'no site';
+    let url = controller.request.url;
+    if (controller.query.goto) {
+        url = controller.query.goto;
+    }
+    else if (url.indexOf('/proxy/') > -1) {
+        url = url.split('/proxy/').pop();
+        if (url === 'client/unblocker-client.js') {
+            return;
         }
-        return site;
+        else {
+            const urlObject = new URL(url);
+            url = urlObject.origin;
+        }
+    }
+    return Promise.all([
+        controller.db.Site.findOrCreate({
+            where: { url },
+            defaults: {
+                title: 'title',
+                description: 'description',
+                keywords: 'keywords',
+            },
+        }),
+        controller.db.Visitor.findOrCreate({
+            where: { ip: controller.ip },
+            defaults: { userAgent: controller.request.headers['user-agent'] },
+        }),
+    ]).then(([site, visitor]) => {
+        site[0].addVisitor(visitor[0]);
+        return [site, visitor];
     });
 }
 let config = {
@@ -38,11 +58,11 @@ let config = {
                         url = `https://${url}`;
                     }
                     console.log('IP', controller.ip);
-                    siteVisit(controller).then((thing) => {
-                        console.log(thing);
-                        console.log('described?', thing.isDescribed());
-                        console.log("ok we're doing stuff..?", thing.sayHello());
-                        controller.response.end(thing.toString());
+                    siteVisit(controller).then(() => {
+                        controller.response.writeHead(302, {
+                            Location: `/proxy/${url}`,
+                        });
+                        controller.response.end();
                     });
                 }
                 else {
@@ -80,8 +100,10 @@ let config = {
                 return;
             }
             else {
-                const handleRequest = unblocker(unblockerConfig);
-                handleRequest(controller.request, controller.response);
+                siteVisit(controller).then(() => {
+                    const handleRequest = unblocker(unblockerConfig);
+                    handleRequest(controller.request, controller.response);
+                });
             }
         },
         monet: function (controller) {

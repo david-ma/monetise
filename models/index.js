@@ -14,12 +14,10 @@ function VisitorFactory(sequelize) {
 exports.VisitorFactory = VisitorFactory;
 class Site extends sequelize_1.Model {
     isDescribed() {
-        console.log('doing the is described thing');
         return this.description && this.description.length > 0;
     }
-    static sayHello() {
-        console.log('Saying helllooo');
-        return 'HELLO!';
+    addVisitor(visitor) {
+        visitor.addSite(this);
     }
 }
 exports.Site = Site;

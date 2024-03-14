@@ -39,19 +39,16 @@ export class Site extends Model {
 
   // https://sequelize.org/docs/v6/core-concepts/model-basics/#taking-advantage-of-models-being-classes
   isDescribed() {
-    console.log('doing the is described thing')
     return this.description && this.description.length > 0
   }
 
-
-  static sayHello() {
-    console.log('Saying helllooo')
-    return 'HELLO!'
+  addVisitor(visitor: VisitorModel) {
+    visitor.addSite(this)
   }
 }
 
 export interface SiteModel extends Model<SiteAttributes>, SiteAttributes {
-  // addVisitor(visitor: VisitorModel): void
+  addVisitor(visitor: VisitorModel): void
 }
 
 export type SiteStatic = typeof Model & {
@@ -70,12 +67,6 @@ export function SiteFactory(sequelize: Sequelize): SiteStatic {
       tableName: 'sites',
     }
   )
-  // return <SiteStatic>sequelize.define('Site', {
-  //   url: DataTypes.STRING,
-  //   title: DataTypes.STRING,
-  //   description: DataTypes.STRING,
-  //   keywords: DataTypes.STRING,
-  // })
 }
 
 import { seqObject } from 'thalia'

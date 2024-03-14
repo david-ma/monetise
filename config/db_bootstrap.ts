@@ -1,4 +1,4 @@
-import { Options, Sequelize } from 'sequelize'
+import { Options, Sequelize, Transaction } from 'sequelize'
 import { dbFactory } from '../models'
 import { seqObject } from 'thalia'
 
@@ -6,6 +6,8 @@ let seqOptions: Options = {
   dialect: 'sqlite',
   storage: `${__dirname}/database.sqlite`,
   logging: false,
+  // transactionType: "IMMEDIATE",
+  transactionType: Transaction.TYPES.IMMEDIATE,
   dialectOptions: {
     decimalNumbers: true,
   },
