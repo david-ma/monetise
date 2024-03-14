@@ -9,7 +9,35 @@ var unblockerConfig = {
 
 const botIpAddresses = {}
 
-import { SiteStatic, VisitorStatic } from '../models'
+import { Site, Visitor, VisitorStatic, SiteStatic } from '../models'
+
+async function siteVisit(controller) {
+  const url = controller.request.url
+  return controller.db.Site.findOne({
+    where: {
+      id: 1,
+    },
+    // defaults: {
+    //   url: url,
+    //   title: 'default',
+    //   description: 'default',
+    //   keywords: 'default',
+    // },
+  }).then((site) => {
+    if (!site) {
+      return 'no site'
+    }
+    // console.log('site', site)
+    // console.log("data", site.dataValues)
+    // console.log('site', site.sayHello())
+
+    // controller.response.writeHead(302, {
+    //   Location: `/proxy/${url}`,
+    // })
+    // controller.response.end("ok...")
+    return site
+  })
+}
 
 let config: Thalia.WebsiteConfig = {
   controllers: {
@@ -34,9 +62,21 @@ let config: Thalia.WebsiteConfig = {
 
           console.log('IP', controller.ip)
 
+          siteVisit(controller).then((thing) => {
+            // controller.response.writeHead(302, {
+            //   Location: `/proxy/${url}`,
+            // })
+            console.log(thing)
+
+            // thing.sayHello()
+            console.log('described?', thing.isDescribed())
+            console.log("ok we're doing stuff..?", thing.sayHello())
+            controller.response.end(thing.toString())
+          })
+
           // Log this visitor
-          const visitors: VisitorStatic = controller.db.Visitor
-          const sites: SiteStatic = controller.db.Site
+          // const visitors: VisitorStatic = controller.db.Visitor
+          // const sites: SiteStatic = controller.db.Site
           // Visitor.findOrBuild({
           //   where: {
           //     ip: "default"
@@ -50,64 +90,32 @@ let config: Thalia.WebsiteConfig = {
           //   console.log('Visitor recorded!', visitor)
           // })
 
-          sites
-            .findOrCreate({
-              where: {
-                url: url,
-              },
-              defaults: {
-                url: url,
-                title: 'default',
-                description: 'default',
-                keywords: 'default',
-              },
-            })
-            .then(([site, created]) => {
-              visitors
-                .findOrCreate({
-                  where: {
-                    ip: controller.ip,
-                  },
-                  defaults: {
-                    ip: controller.ip,
-                    userAgent: controller.request.headers['user-agent'],
-                  },
-                })
-                .then(([visitor, created]) => {
+          // controller.db.Site.findOrCreate({
+          //   where: {
+          //     url: url,
+          //   },
+          //   defaults: {
+          //     url: url,
+          //     title: 'default',
+          //     description: 'default',
+          //     keywords: 'default',
+          //   },
+          // }).then(([site, created]: [Site, Boolean]) => {
+          //   controller.db.Site.findOne({
+          //     where: {
+          //       url: url,
+          //     },
+          //   }).then((site) => {
+          //     console.log('site', site)
+          //     console.log("data", site.dataValues)
+          //     console.log('site', site.sayHello())
 
-                  site.addVisitor(visitor)
-                  // site.visitors.push(visitor)
-                  // site.save()
-
-                  controller.response.writeHead(302, {
-                    Location: `/proxy/${url}`,
-                  })
-                  controller.response.end()
-                  return
-                  // site.addVisitor(visitor)
-                })
-            })
-          // Promise.all([
-          // ]).then(([site, visitor]) => {
-          //   // site[0].addVisitor(visitor[0])
-          // })
-
-          // visitor.create({
-          //   ip: controller.ip,
-          //   userAgent: controller.request.headers['user-agent'],
-          // }).then((visitor) => {
-          //   console.log('Visitor recorded!', visitor)
-
-          //   controller.response.writeHead(302, {
-          //     Location: `/proxy/${url}`,
+          //     // controller.response.writeHead(302, {
+          //     //   Location: `/proxy/${url}`,
+          //     // })
+          //     controller.response.end("ok...")
+          //     return
           //   })
-          //   controller.response.end()
-          //   return
-          // })
-
-          // .then(([site, created]) => {
-
-          // site.addVisitor(controller.db.Visitor.build({ ip: controller.ip, userAgent: controller.request.headers['user-agent'] }))
           // })
         } else {
           controller.routeFile(`${__dirname}/../public/index.html`)

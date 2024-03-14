@@ -1,5 +1,6 @@
 import { Options, Sequelize } from 'sequelize'
-import { SiteFactory, VisitorFactory } from '../models'
+import { dbFactory } from '../models'
+import { seqObject } from 'thalia'
 
 let seqOptions: Options = {
   dialect: 'sqlite',
@@ -13,22 +14,11 @@ let seqOptions: Options = {
   },
 }
 
-import { seqObject } from 'thalia'
-const sequelize = new Sequelize(seqOptions)
-const Site = SiteFactory(sequelize)
-const Visitor = VisitorFactory(sequelize)
-Site.belongsToMany(Visitor, { through: 'SiteVisitor' })
-Visitor.belongsToMany(Site, { through: 'SiteVisitor' })
-
-const seq: seqObject = {
-  sequelize,
-  Site,
-  Visitor,
-}
+const seq: seqObject = dbFactory(seqOptions)
 
 seq.sequelize.sync({
-  force: true,
-  alter: true,
+  // force: true,
+  // alter: true,
 })
 
 exports.seq = seq

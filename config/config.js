@@ -8,6 +8,19 @@ var unblockerConfig = {
     responseMiddleware: [googleAnalyticsMiddleware],
 };
 const botIpAddresses = {};
+async function siteVisit(controller) {
+    const url = controller.request.url;
+    return controller.db.Site.findOne({
+        where: {
+            id: 1,
+        },
+    }).then((site) => {
+        if (!site) {
+            return 'no site';
+        }
+        return site;
+    });
+}
 let config = {
     controllers: {
         '': function (controller) {
@@ -25,39 +38,11 @@ let config = {
                         url = `https://${url}`;
                     }
                     console.log('IP', controller.ip);
-                    const visitors = controller.db.Visitor;
-                    const sites = controller.db.Site;
-                    sites
-                        .findOrCreate({
-                        where: {
-                            url: url,
-                        },
-                        defaults: {
-                            url: url,
-                            title: 'default',
-                            description: 'default',
-                            keywords: 'default',
-                        },
-                    })
-                        .then(([site, created]) => {
-                        visitors
-                            .findOrCreate({
-                            where: {
-                                ip: controller.ip,
-                            },
-                            defaults: {
-                                ip: controller.ip,
-                                userAgent: controller.request.headers['user-agent'],
-                            },
-                        })
-                            .then(([visitor, created]) => {
-                            site.addVisitor(visitor);
-                            controller.response.writeHead(302, {
-                                Location: `/proxy/${url}`,
-                            });
-                            controller.response.end();
-                            return;
-                        });
+                    siteVisit(controller).then((thing) => {
+                        console.log(thing);
+                        console.log('described?', thing.isDescribed());
+                        console.log("ok we're doing stuff..?", thing.sayHello());
+                        controller.response.end(thing.toString());
                     });
                 }
                 else {
