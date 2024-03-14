@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres
+    volumes:
+      - postgresqldata:/var/lib/postgresql/data
+    expose:
+      - '5432'
+    ports:
+      - '5233:5432'
+    environment:
+      # PGUSER: 'postgres'
+      POSTGRES_USER: 'monetise'
+      POSTGRES_PASSWORD: 'monetise_password'
+
+volumes:
+  postgresqldata:

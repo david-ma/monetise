@@ -3,9 +3,11 @@ import { Thalia } from 'thalia'
 var Transform = require('stream').Transform
 
 var unblockerConfig = {
+  host: 'monetiseyourwebsite.com',
   prefix: '/proxy/',
   responseMiddleware: [googleAnalyticsMiddleware],
 }
+const handleRequest = unblocker(unblockerConfig)
 
 const botIpAddresses = {}
 
@@ -91,7 +93,11 @@ let config: Thalia.WebsiteConfig = {
 
       const cookies = controller.cookies
 
-      if (sections.length > 2) {
+      if (url.indexOf('/proxy/client/') > -1) {
+        // The client script /proxy/client/unblocker-client.js needs to be served
+        // Also, I think it will try to connect via websockets
+        handleRequest(controller.request, controller.response)
+      } else if (sections.length > 2) {
         controller.response.writeHead(302, {
           Location: url,
         })
@@ -120,8 +126,6 @@ let config: Thalia.WebsiteConfig = {
         return
       } else {
         siteVisit(controller).then(() => {
-          const handleRequest = unblocker(unblockerConfig)
-
           handleRequest(controller.request, controller.response)
         })
       }

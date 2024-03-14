@@ -3,11 +3,13 @@ import { dbFactory } from '../models'
 import { seqObject } from 'thalia'
 
 let seqOptions: Options = {
-  dialect: 'sqlite',
-  storage: `${__dirname}/database.sqlite`,
+  dialect: 'postgres',
+  database: 'monetise',
+  username: 'monetise',
+  password: 'monetise_password',
+  host: 'localhost',
+  port: 5233,
   logging: false,
-  // transactionType: "IMMEDIATE",
-  transactionType: Transaction.TYPES.IMMEDIATE,
   dialectOptions: {
     decimalNumbers: true,
   },

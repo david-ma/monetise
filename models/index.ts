@@ -71,16 +71,6 @@ export function SiteFactory(sequelize: Sequelize): SiteStatic {
 
 import { seqObject } from 'thalia'
 export function dbFactory(seqOptions: Options): seqObject {
-  if (!seqOptions.dialect) {
-    seqOptions.dialect = 'sqlite'
-    seqOptions.storage = seqOptions.storage || `${__dirname}/database.sqlite`
-  }
-  seqOptions.logging = seqOptions.logging || false
-  seqOptions.dialectOptions = seqOptions.dialectOptions || {
-    decimalNumbers: true,
-  }
-  seqOptions.define = seqOptions.define || { underscored: true }
-
   const sequelize = new Sequelize(seqOptions)
   const Site = SiteFactory(sequelize)
   const Visitor = VisitorFactory(sequelize)

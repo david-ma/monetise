@@ -4,9 +4,11 @@ exports.config = void 0;
 const unblocker = require('unblocker');
 var Transform = require('stream').Transform;
 var unblockerConfig = {
+    host: 'monetiseyourwebsite.com',
     prefix: '/proxy/',
     responseMiddleware: [googleAnalyticsMiddleware],
 };
+const handleRequest = unblocker(unblockerConfig);
 const botIpAddresses = {};
 async function siteVisit(controller) {
     let url = controller.request.url;
@@ -81,7 +83,10 @@ let config = {
             const sections = url.split('/proxy/');
             url = controller.request.url = `${sections[0]}/proxy/${sections.pop()}`;
             const cookies = controller.cookies;
-            if (sections.length > 2) {
+            if (url.indexOf('/proxy/client/') > -1) {
+                handleRequest(controller.request, controller.response);
+            }
+            else if (sections.length > 2) {
                 controller.response.writeHead(302, {
                     Location: url,
                 });
@@ -107,7 +112,6 @@ let config = {
             }
             else {
                 siteVisit(controller).then(() => {
-                    const handleRequest = unblocker(unblockerConfig);
                     handleRequest(controller.request, controller.response);
                 });
             }
