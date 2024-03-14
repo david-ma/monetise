@@ -19,8 +19,14 @@ async function siteVisit(controller) {
             return;
         }
         else {
-            const urlObject = new URL(url);
-            url = urlObject.origin;
+            try {
+                if (url.indexOf('http') !== 0) {
+                    url = `https://${url}`;
+                }
+                const urlObject = new URL(url);
+                url = urlObject.origin;
+            }
+            catch (e) { }
         }
     }
     return Promise.all([
