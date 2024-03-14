@@ -1,4 +1,13 @@
 services:
+  web:
+    build: .
+    image: monetise
+    ports:
+      - '1333:1337'
+    environment:
+      - NODE_ENV=docker
+    restart: always
+
   db:
     image: postgres
     volumes:
