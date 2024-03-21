@@ -291,6 +291,6 @@ function replaceImage(image){
   height = image.height || 300;
   id = Math.floor(Math.random() * 10000) + 1;
   image.src = `${url}/${width}w${height}h${id}`;
-  image.srcset = `${url}/${width}w${height}h${id} ${width}w, ${url}/${width}w${height}h${id} ${height}h`;
+  image.srcset = `${url}/${width}w${height}h${id}`;
   image.style = `width: ${width}px; height: ${height}px; object-fit: cover;`;
 }

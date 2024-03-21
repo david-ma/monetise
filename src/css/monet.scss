@@ -53,8 +53,10 @@ header h1 {
   color: #eee;
   margin: 0;
 }
+h2 {
+  font-size: 24px;
+}
 header h2 {
-  font-size: 30px;
   color: #eee;
   margin: 0;
 }
@@ -71,7 +73,18 @@ section.hero {
       flex-grow: 1;
     }
     label {
-      font-size: 20px;;
+      font-size: 20px;
+    }
+  }
+  input[type='submit'] {
+    margin: 20px 0;
+    padding: 10px 20px;
+    background: #333e52;
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    &:hover {
+      background: #222;
     }
   }
 }
