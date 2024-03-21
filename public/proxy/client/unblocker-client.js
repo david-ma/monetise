@@ -1,8 +1,6 @@
 (function (global) {
   "use strict";
 
-  console.log("Hey we're serving this verison")
-
   // todo:
   // - postMessage
   // - open
@@ -254,3 +252,19 @@
     };
   }
 })(this); // window in a browser, global in node.js
+
+
+// David's stuff:
+// Find all images and replace them with a random painting by Claude Monet
+// Todo:
+// - Get image sizes and replace with the same size painting
+
+// Wait until document is ready:
+document.addEventListener('DOMContentLoaded', function() {
+  const images = document.getElementsByTagName('img');
+  const url = '/monet'
+
+  for (var i = 0; i < images.length; i++) {
+    images[i].src = `${url}?i=${i}`;
+  }
+})
