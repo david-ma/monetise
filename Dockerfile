@@ -8,8 +8,8 @@ COPY package.json /usr/app/Thalia/websites/monetise
 WORKDIR /usr/app/Thalia/websites/monetise
 RUN pnpm install
 COPY . /usr/app/Thalia/websites/monetise
-RUN pnpm run build
 
 WORKDIR /usr/app/Thalia
+RUN sh build.sh monetise
 
 CMD ["/usr/app/Thalia/start.sh", "monetise"]

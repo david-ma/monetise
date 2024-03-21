@@ -17,19 +17,14 @@ async function siteVisit(controller) {
     }
     else if (url.indexOf('/proxy/') > -1) {
         url = url.split('/proxy/').pop();
-        if (url === 'client/unblocker-client.js') {
-            return;
-        }
-        else {
-            try {
-                if (url.indexOf('http') !== 0) {
-                    url = `https://${url}`;
-                }
-                const urlObject = new URL(url);
-                url = urlObject.origin;
+        try {
+            if (url.indexOf('http') !== 0) {
+                url = `https://${url}`;
             }
-            catch (e) { }
+            const urlObject = new URL(url);
+            url = urlObject.origin;
         }
+        catch (e) { }
     }
     return Promise.all([
         controller.db.Site.findOrCreate({
@@ -84,7 +79,7 @@ let config = {
             url = controller.request.url = `${sections[0]}/proxy/${sections.pop()}`;
             const cookies = controller.cookies;
             if (url.indexOf('/proxy/client/') > -1) {
-                handleRequest(controller.request, controller.response);
+                controller.routeFile(`${__dirname}/../public/proxy/client/unblocker-client.js`);
             }
             else if (sections.length > 2) {
                 controller.response.writeHead(302, {

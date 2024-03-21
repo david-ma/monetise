@@ -19,17 +19,13 @@ async function siteVisit(controller) {
   } else if (url.indexOf('/proxy/') > -1) {
     url = url.split('/proxy/').pop()
 
-    if (url === 'client/unblocker-client.js') {
-      return
-    } else {
-      try {
-        if (url.indexOf('http') !== 0) {
-          url = `https://${url}`
-        }
-        const urlObject = new URL(url)
-        url = urlObject.origin
-      } catch (e) {}
-    }
+    try {
+      if (url.indexOf('http') !== 0) {
+        url = `https://${url}`
+      }
+      const urlObject = new URL(url)
+      url = urlObject.origin
+    } catch (e) {}
   }
 
   return Promise.all([
@@ -96,7 +92,8 @@ let config: Thalia.WebsiteConfig = {
       if (url.indexOf('/proxy/client/') > -1) {
         // The client script /proxy/client/unblocker-client.js needs to be served
         // Also, I think it will try to connect via websockets
-        handleRequest(controller.request, controller.response)
+        controller.routeFile(`${__dirname}/../public/proxy/client/unblocker-client.js`)
+        // handleRequest(controller.request, controller.response)
       } else if (sections.length > 2) {
         controller.response.writeHead(302, {
           Location: url,

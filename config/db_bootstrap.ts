@@ -18,6 +18,11 @@ let seqOptions: Options = {
   },
 }
 
+if (process.env.NODE_ENV === 'docker') {
+  seqOptions.host = 'db'
+  seqOptions.port = 5432
+}
+
 const seq: seqObject = dbFactory(seqOptions)
 
 seq.sequelize.sync({
@@ -25,4 +30,5 @@ seq.sequelize.sync({
   // alter: true,
 })
 
+exports.seqOptions = seqOptions
 exports.seq = seq
