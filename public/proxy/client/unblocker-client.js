@@ -258,13 +258,39 @@
 // Find all images and replace them with a random painting by Claude Monet
 // Todo:
 // - Get image sizes and replace with the same size painting
+// - Do a second pass, for images that load later?
+//   Filter out any images already replaced.
+
 
 // Wait until document is ready:
 document.addEventListener('DOMContentLoaded', function() {
+  console.log("Replace images with paintings by Claude Monet")
+
   const images = document.getElementsByTagName('img');
-  const url = '/monet'
 
   for (var i = 0; i < images.length; i++) {
-    images[i].src = `${url}?i=${i}`;
+    var image = images[i];
+    replaceImage(image);
   }
+
+  // window.setTimeout(function() {
+  //   console.log("Second pass")
+  //   const images = document.getElementsByTagName('img');
+
+  //   for (var i = 0; i < images.length; i++) {
+  //     var image = images[i];
+  //     replaceImage(image);
+  //   }
+  // }, 500)
 })
+
+function replaceImage(image){
+  const url = '/monet'
+
+  width = image.width || 300;
+  height = image.height || 300;
+  id = Math.floor(Math.random() * 10000) + 1;
+  image.src = `${url}/${width}w${height}h${id}`;
+  image.srcset = `${url}/${width}w${height}h${id} ${width}w, ${url}/${width}w${height}h${id} ${height}h`;
+  image.style = `width: ${width}px; height: ${height}px; object-fit: cover;`;
+}
