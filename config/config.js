@@ -40,8 +40,7 @@ async function siteVisit(controller) {
             defaults: { userAgent: controller.request.headers['user-agent'] },
         }),
     ]).then(([site, visitor]) => {
-        site[0].addVisitor(visitor[0]);
-        return [site, visitor];
+        return site[0].addVisitor(visitor[0]);
     });
 }
 let config = {

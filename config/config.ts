@@ -42,8 +42,7 @@ async function siteVisit(controller) {
       defaults: { userAgent: controller.request.headers['user-agent'] },
     }),
   ]).then(([site, visitor]) => {
-    site[0].addVisitor(visitor[0])
-    return [site, visitor]
+    return site[0].addVisitor(visitor[0])
   })
 }
 
@@ -92,7 +91,9 @@ let config: Thalia.WebsiteConfig = {
       if (url.indexOf('/proxy/client/') > -1) {
         // The client script /proxy/client/unblocker-client.js needs to be served
         // Also, I think it will try to connect via websockets
-        controller.routeFile(`${__dirname}/../public/proxy/client/unblocker-client.js`)
+        controller.routeFile(
+          `${__dirname}/../public/proxy/client/unblocker-client.js`
+        )
         // handleRequest(controller.request, controller.response)
       } else if (sections.length > 2) {
         controller.response.writeHead(302, {

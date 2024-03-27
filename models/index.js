@@ -17,11 +17,12 @@ class Site extends sequelize_1.Model {
         return this.description && this.description.length > 0;
     }
     addVisitor(visitor) {
-        visitor.getSites().then((sites) => {
+        return visitor.getSites().then((sites) => {
             if (sites.find((site) => site.id === this.id)) {
-                return;
+                return null;
             }
             visitor.addSite(this);
+            return [this, visitor];
         });
     }
 }
