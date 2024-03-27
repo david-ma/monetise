@@ -1,68 +1,68 @@
-import { Sequelize, DataTypes, Model, BuildOptions, Options } from "sequelize";
+import { Sequelize, DataTypes, Model, BuildOptions, Options } from 'sequelize'
 
 export interface VisitorAttributes {
-  ip: string;
-  userAgent: string;
+  ip: string
+  userAgent: string
 }
 export interface VisitorModel
   extends Model<VisitorAttributes>,
     VisitorAttributes {
-  addSite(site: SiteModel): void;
-  getSites(): Promise<SiteModel[]>;
+  addSite(site: SiteModel): void
+  getSites(): Promise<SiteModel[]>
 }
 export class Visitor extends Model<VisitorModel, VisitorAttributes> {
-  public ip!: string;
-  public userAgent!: string;
+  public ip!: string
+  public userAgent!: string
 }
 export type VisitorStatic = typeof Model & {
-  new (values?: object, options?: BuildOptions): VisitorModel;
-};
+  new (values?: object, options?: BuildOptions): VisitorModel
+}
 export function VisitorFactory(sequelize: Sequelize): VisitorStatic {
-  return <VisitorStatic>sequelize.define("Visitor", {
+  return <VisitorStatic>sequelize.define('Visitor', {
     ip: DataTypes.STRING,
     userAgent: DataTypes.STRING,
-  });
+  })
 }
 
 export interface SiteAttributes {
-  url: string;
-  title: string;
-  description: string;
-  keywords: string;
+  url: string
+  title: string
+  description: string
+  keywords: string
 }
 export class Site extends Model {
-  public id!: number;
+  public id!: number
 
-  public url!: string;
-  public title!: string;
-  public description!: string;
-  public keywords!: string;
+  public url!: string
+  public title!: string
+  public description!: string
+  public keywords!: string
 
   // https://sequelize.org/docs/v6/core-concepts/model-basics/#taking-advantage-of-models-being-classes
   isDescribed() {
-    return this.description && this.description.length > 0;
+    return this.description && this.description.length > 0
   }
 
   addVisitor(visitor: VisitorModel) {
     return visitor.getSites().then((sites) => {
       if (sites.find((site) => site.id === this.id)) {
-        return null;
+        return null
       }
 
-      visitor.addSite(this);
-      return [this, visitor];
-    });
+      visitor.addSite(this)
+      return [this, visitor]
+    })
   }
 }
 
 export interface SiteModel extends Model<SiteAttributes>, SiteAttributes {
-  id: number;
-  addVisitor(visitor: VisitorModel): void;
+  id: number
+  addVisitor(visitor: VisitorModel): void
 }
 
 export type SiteStatic = typeof Model & {
-  new (values?: object, options?: BuildOptions): SiteModel;
-};
+  new (values?: object, options?: BuildOptions): SiteModel
+}
 export function SiteFactory(sequelize: Sequelize): SiteStatic {
   return Site.init(
     {
@@ -73,22 +73,22 @@ export function SiteFactory(sequelize: Sequelize): SiteStatic {
     },
     {
       sequelize,
-      tableName: "sites",
+      tableName: 'sites',
     }
-  );
+  )
 }
 
-import { seqObject } from "thalia";
+import { seqObject } from 'thalia'
 export function dbFactory(seqOptions: Options): seqObject {
-  const sequelize = new Sequelize(seqOptions);
-  const Site = SiteFactory(sequelize);
-  const Visitor = VisitorFactory(sequelize);
-  Site.belongsToMany(Visitor, { through: "SiteVisitor" });
-  Visitor.belongsToMany(Site, { through: "SiteVisitor" });
+  const sequelize = new Sequelize(seqOptions)
+  const Site = SiteFactory(sequelize)
+  const Visitor = VisitorFactory(sequelize)
+  Site.belongsToMany(Visitor, { through: 'SiteVisitor' })
+  Visitor.belongsToMany(Site, { through: 'SiteVisitor' })
 
   return {
     sequelize,
     Site,
     Visitor,
-  };
+  }
 }
