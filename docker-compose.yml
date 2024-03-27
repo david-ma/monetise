@@ -3,7 +3,7 @@ services:
     build: .
     image: monetise
     ports:
-      - '1333:1337'
+      - '7777:1337'
     environment:
       - NODE_ENV=docker
     restart: always
