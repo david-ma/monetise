@@ -6,7 +6,7 @@ class Visitor extends sequelize_1.Model {
 }
 exports.Visitor = Visitor;
 function VisitorFactory(sequelize) {
-    return sequelize.define('Visitor', {
+    return sequelize.define("Visitor", {
         ip: sequelize_1.DataTypes.STRING,
         userAgent: sequelize_1.DataTypes.STRING,
     });
@@ -17,7 +17,7 @@ class Site extends sequelize_1.Model {
         return this.description && this.description.length > 0;
     }
     addVisitor(visitor) {
-        if (visitor.sites.find(site => site.id === this.id)) {
+        if (visitor.sites.find((site) => site.id === this.id)) {
             return;
         }
         visitor.addSite(this);
@@ -32,7 +32,7 @@ function SiteFactory(sequelize) {
         keywords: sequelize_1.DataTypes.STRING,
     }, {
         sequelize,
-        tableName: 'sites',
+        tableName: "sites",
     });
 }
 exports.SiteFactory = SiteFactory;
@@ -40,8 +40,8 @@ function dbFactory(seqOptions) {
     const sequelize = new sequelize_1.Sequelize(seqOptions);
     const Site = SiteFactory(sequelize);
     const Visitor = VisitorFactory(sequelize);
-    Site.belongsToMany(Visitor, { through: 'SiteVisitor' });
-    Visitor.belongsToMany(Site, { through: 'SiteVisitor' });
+    Site.belongsToMany(Visitor, { through: "SiteVisitor" });
+    Visitor.belongsToMany(Site, { through: "SiteVisitor" });
     return {
         sequelize,
         Site,
