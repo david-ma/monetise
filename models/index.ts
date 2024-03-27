@@ -8,7 +8,7 @@ export interface VisitorModel
   extends Model<VisitorAttributes>,
     VisitorAttributes {
   addSite(site: SiteModel): void;
-  sites: SiteModel[];
+  getSites(): Promise<SiteModel[]>;
 }
 export class Visitor extends Model<VisitorModel, VisitorAttributes> {
   public ip!: string;
@@ -44,12 +44,13 @@ export class Site extends Model {
   }
 
   addVisitor(visitor: VisitorModel) {
-    // Do not add the same visitor twice
-    if (visitor.sites.find((site) => site.id === this.id)) {
-      return;
-    }
+    visitor.getSites().then((sites) => {
+      if (sites.find((site) => site.id === this.id)) {
+        return;
+      }
 
-    visitor.addSite(this);
+      visitor.addSite(this);
+    });
   }
 }
 
