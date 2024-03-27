@@ -282,6 +282,17 @@ document.addEventListener('DOMContentLoaded', function() {
   //     replaceImage(image);
   //   }
   // }, 500)
+
+
+  // Anything with background-image
+  const elements = document.querySelectorAll('[style*="background-image"]');
+  for (var i = 0; i < elements.length; i++) {
+    var element = elements[i];
+    const style = element.getAttribute('style');
+    const random = Math.floor(Math.random() * 10000) + i;
+    const url = `/monet/${random}`
+    element.style.backgroundImage = `url(${url})`;
+  }
 })
 
 function replaceImage(image){
