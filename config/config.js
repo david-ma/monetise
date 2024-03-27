@@ -1,7 +1,11 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.config = void 0;
 const unblocker = require('unblocker');
+const maxmind_1 = __importDefault(require("maxmind"));
 var Transform = require('stream').Transform;
 var unblockerConfig = {
     host: 'monetiseyourwebsite.com',
@@ -116,6 +120,23 @@ let config = {
                 Location: `/images/assets/${image}.jpg`,
             });
             controller.response.end();
+        },
+        visitors: function (controller) {
+            Promise.all([
+                controller.db.Visitor.findAll(),
+                maxmind_1.default.open(`${__dirname}/../data/city.mmdb`),
+            ]).then(([visitors, lookup]) => {
+                visitors.forEach((visitor) => {
+                    const IP = visitor.ip;
+                    const blob = lookup.get(IP);
+                    visitor.city = blob.city.names.en;
+                    visitor.country = blob.country.names.en;
+                });
+                controller.response.end(JSON.stringify(visitors));
+            }, (error) => {
+                console.error(error);
+                controller.response.end("Error - We probably didn't download the city IP lookup database.");
+            });
         },
     },
 };

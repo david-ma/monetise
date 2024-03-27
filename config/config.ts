@@ -1,5 +1,7 @@
 const unblocker = require('unblocker')
 import { Thalia } from 'thalia'
+import maxmind, { CityResponse } from 'maxmind'
+
 var Transform = require('stream').Transform
 
 var unblockerConfig = {
@@ -136,6 +138,29 @@ let config: Thalia.WebsiteConfig = {
         Location: `/images/assets/${image}.jpg`,
       })
       controller.response.end()
+    },
+    visitors: function (controller) {
+      Promise.all([
+        controller.db.Visitor.findAll(),
+        maxmind.open<CityResponse>(`${__dirname}/../data/city.mmdb`),
+      ]).then(
+        ([visitors, lookup]) => {
+          visitors.forEach((visitor) => {
+            const IP = visitor.ip
+            const blob = lookup.get(IP)
+
+            visitor.city = blob.city.names.en
+            visitor.country = blob.country.names.en
+          })
+          controller.response.end(JSON.stringify(visitors))
+        },
+        (error) => {
+          console.error(error)
+          controller.response.end(
+            "Error - We probably didn't download the city IP lookup database."
+          )
+        }
+      )
     },
   },
 }

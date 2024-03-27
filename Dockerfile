@@ -9,6 +9,9 @@ WORKDIR /usr/app/Thalia/websites/monetise
 RUN pnpm install
 COPY . /usr/app/Thalia/websites/monetise
 
+WORKDIR /usr/app/Thalia/websites/monetise/data
+RUN sh download.sh
+
 WORKDIR /usr/app/Thalia
 RUN sh build.sh monetise
 

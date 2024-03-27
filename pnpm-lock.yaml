@@ -5,6 +5,9 @@ settings:
   excludeLinksFromLockfile: false
 
 dependencies:
+  maxmind:
+    specifier: ^4.3.18
+    version: 4.3.18
   pg:
     specifier: ^8.11.3
     version: 8.11.3
@@ -377,6 +380,14 @@ packages:
       yallist: 4.0.0
     dev: false
 
+  /maxmind@4.3.18:
+    resolution: {integrity: sha512-5b9utU7ZxcGYTBaO7hCF0FXyfw3IpankLn+FnLW4RZS1zi97RBeSdfXJFJlk5UxNsMiFZlsdMT3lzvD+bD8MLQ==}
+    engines: {node: '>=12', npm: '>=6'}
+    dependencies:
+      mmdb-lib: 2.1.0
+      tiny-lru: 11.2.5
+    dev: false
+
   /media-typer@0.3.0:
     resolution: {integrity: sha512-dq+qelQ9akHpcOl/gUVRTxVIOkAJ1wR3QAvb4RsVjS8oVoFjDGTc679wJYmUmknUF5HwMLOgb5O+a3KxfWapPQ==}
     engines: {node: '>= 0.6'}
@@ -413,6 +424,11 @@ packages:
     resolution: {integrity: sha512-USPkMeET31rOMiarsBNIHZKLGgvKc/LrjofAnBlOttf5ajRvqiRA8QsenbcooctK6d6Ts6aqZXBA+XbkKthiQg==}
     engines: {node: '>=4.0.0'}
     hasBin: true
+    dev: false
+
+  /mmdb-lib@2.1.0:
+    resolution: {integrity: sha512-tdDTZmnI5G4UoSctv2KxM/3VQt2XRj4CmR5R4VsAWsOUcS3LysHR34wtixWm/pXxXdkBDuN92auxkC0T2+qd1Q==}
+    engines: {node: '>=10', npm: '>=6'}
     dev: false
 
   /moment-timezone@0.5.45:
@@ -773,6 +789,11 @@ packages:
   /statuses@2.0.1:
     resolution: {integrity: sha512-RwNA9Z/7PrK06rYLIzFMlaF+l73iwpzsqRIFgbMLbTcLD6cOao82TaWefPXQvB2fOC4AjuYSEndS7N/mTCbkdQ==}
     engines: {node: '>= 0.8'}
+    dev: false
+
+  /tiny-lru@11.2.5:
+    resolution: {integrity: sha512-JpqM0K33lG6iQGKiigcwuURAKZlq6rHXfrgeL4/I8/REoyJTGU+tEMszvT/oTRVHG2OiylhGDjqPp1jWMlr3bw==}
+    engines: {node: '>=12'}
     dev: false
 
   /tld@0.0.2:
