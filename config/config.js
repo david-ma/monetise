@@ -126,13 +126,16 @@ let config = {
                 controller.db.Visitor.findAll(),
                 maxmind_1.default.open(`${__dirname}/../data/city.mmdb`),
             ]).then(([visitors, lookup]) => {
-                visitors.forEach((visitor) => {
-                    const IP = visitor.ip;
-                    const blob = lookup.get(IP);
-                    visitor.city = blob.city.names.en;
-                    visitor.country = blob.country.names.en;
+                Promise.all(visitors.map((visitor) => {
+                    const blob = lookup.get(visitor.ip);
+                    return {
+                        ...visitor.dataValues,
+                        city: blob.city.names.en,
+                        country: blob.country.names.en,
+                    };
+                })).then((stuff) => {
+                    controller.response.end(JSON.stringify(stuff));
                 });
-                controller.response.end(JSON.stringify(visitors));
             }, (error) => {
                 console.error(error);
                 controller.response.end("Error - We probably didn't download the city IP lookup database.");

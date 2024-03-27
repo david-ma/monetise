@@ -145,14 +145,19 @@ let config: Thalia.WebsiteConfig = {
         maxmind.open<CityResponse>(`${__dirname}/../data/city.mmdb`),
       ]).then(
         ([visitors, lookup]) => {
-          visitors.forEach((visitor) => {
-            const IP = visitor.ip
-            const blob = lookup.get(IP)
+          Promise.all(
+            visitors.map((visitor) => {
+              const blob = lookup.get(visitor.ip)
 
-            visitor.city = blob.city.names.en
-            visitor.country = blob.country.names.en
+              return {
+                ...visitor.dataValues,
+                city: blob.city.names.en,
+                country: blob.country.names.en,
+              }
+            })
+          ).then((stuff) => {
+            controller.response.end(JSON.stringify(stuff))
           })
-          controller.response.end(JSON.stringify(visitors))
         },
         (error) => {
           console.error(error)
