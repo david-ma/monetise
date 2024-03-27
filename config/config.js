@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.config = void 0;
 const unblocker = require('unblocker');
 const maxmind_1 = __importDefault(require("maxmind"));
+const handlebars_1 = __importDefault(require("handlebars"));
 var Transform = require('stream').Transform;
 var unblockerConfig = {
     host: 'monetiseyourwebsite.com',
@@ -125,16 +126,21 @@ let config = {
             Promise.all([
                 controller.db.Visitor.findAll(),
                 maxmind_1.default.open(`${__dirname}/../data/city.mmdb`),
-            ]).then(([visitors, lookup]) => {
+                new Promise(controller.readAllViews),
+            ]).then(([visitors, lookup, views]) => {
                 Promise.all(visitors.map((visitor) => {
                     const blob = lookup.get(visitor.ip);
-                    return {
-                        ...visitor.dataValues,
-                        city: blob.city.names.en,
-                        country: blob.country.names.en,
-                    };
-                })).then((stuff) => {
-                    controller.response.end(JSON.stringify(stuff));
+                    return visitor.countSites().then((count) => {
+                        return {
+                            ...visitor.dataValues,
+                            city: blob.city.names.en,
+                            country: blob.country.names.en,
+                            count,
+                        };
+                    });
+                })).then((data) => {
+                    const template = handlebars_1.default.compile(views.visitors);
+                    controller.response.end(template({ visitors: data }));
                 });
             }, (error) => {
                 console.error(error);

@@ -2,3 +2,4 @@ node_modules
 tsconfig.tsbuildinfo
 dist
 database.sqlite
+city.mmdb

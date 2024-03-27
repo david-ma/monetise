@@ -9,6 +9,7 @@ export interface VisitorModel
     VisitorAttributes {
   addSite(site: SiteModel): void
   getSites(): Promise<SiteModel[]>
+  countSites(): Promise<number>
 }
 export class Visitor extends Model<VisitorModel, VisitorAttributes> {
   public ip!: string

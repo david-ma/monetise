@@ -1,6 +1,7 @@
 const unblocker = require('unblocker')
-import { Thalia } from 'thalia'
+import { Thalia, setHandlebarsContent } from 'thalia'
 import maxmind, { CityResponse } from 'maxmind'
+import Handlebars from 'handlebars'
 
 var Transform = require('stream').Transform
 
@@ -143,20 +144,25 @@ let config: Thalia.WebsiteConfig = {
       Promise.all([
         controller.db.Visitor.findAll(),
         maxmind.open<CityResponse>(`${__dirname}/../data/city.mmdb`),
+        new Promise(controller.readAllViews),
       ]).then(
-        ([visitors, lookup]) => {
+        ([visitors, lookup, views]) => {
           Promise.all(
             visitors.map((visitor) => {
               const blob = lookup.get(visitor.ip)
 
-              return {
-                ...visitor.dataValues,
-                city: blob.city.names.en,
-                country: blob.country.names.en,
-              }
+              return visitor.countSites().then((count) => {
+                return {
+                  ...visitor.dataValues,
+                  city: blob.city.names.en,
+                  country: blob.country.names.en,
+                  count,
+                }
+              })
             })
-          ).then((stuff) => {
-            controller.response.end(JSON.stringify(stuff))
+          ).then((data) => {
+            const template = Handlebars.compile(views.visitors)
+            controller.response.end(template({ visitors: data }))
           })
         },
         (error) => {

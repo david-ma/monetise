@@ -10,6 +10,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "handlebars": "^4.7.8",
     "maxmind": "^4.3.18",
     "pg": "^8.11.3",
     "pg-hstore": "^2.3.4",
