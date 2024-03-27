@@ -80,7 +80,9 @@ let config: Thalia.WebsiteConfig = {
             controller.response.end()
           })
         } else {
-          controller.routeFile(`${__dirname}/../public/index.html`)
+          siteVisit(controller).then(() => {
+            controller.routeFile(`${__dirname}/../public/index.html`)
+          })
         }
       }
     },
@@ -152,18 +154,30 @@ let config: Thalia.WebsiteConfig = {
               const blob = lookup.get(visitor.ip)
 
               return visitor.countSites().then((count) => {
+                const createdAt: Date = visitor.createdAt
+                const date = createdAt.toLocaleString()
+
                 return {
                   ...visitor.dataValues,
-                  city: blob.city.names.en,
-                  country: blob.country.names.en,
+                  city: blob ? blob.city.names.en : 'Unknown',
+                  country: blob ? blob.country.names.en : 'Unknown',
+                  longitude: blob ? blob.location.longitude : 'Unknown',
+                  latitude: blob ? blob.location.latitude : 'Unknown',
+                  date,
                   count,
                 }
               })
             })
-          ).then((data) => {
-            const template = Handlebars.compile(views.visitors)
-            controller.response.end(template({ visitors: data }))
-          })
+          ).then(
+            (data) => {
+              const template = Handlebars.compile(views.visitors)
+              controller.response.end(template({ visitors: data }))
+            },
+            (error) => {
+              console.error(error)
+              controller.response.end('Error - Could not fetch visitors')
+            }
+          )
         },
         (error) => {
           console.error(error)
