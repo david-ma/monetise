@@ -17,6 +17,9 @@ class Site extends sequelize_1.Model {
         return this.description && this.description.length > 0;
     }
     addVisitor(visitor) {
+        if (visitor.sites.find(site => site.id === this.id)) {
+            return;
+        }
         visitor.addSite(this);
     }
 }
