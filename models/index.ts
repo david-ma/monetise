@@ -79,7 +79,8 @@ export function SiteFactory(sequelize: Sequelize): SiteStatic {
   )
 }
 
-export interface paintingAttributes {
+export interface PaintingAttributes {
+  id: number
   title: string
   yearStart: number
   yearEnd?: number
@@ -87,8 +88,9 @@ export interface paintingAttributes {
   imageKey?: string
   filename?: string
 }
-export interface paintingModel extends Model<paintingAttributes>, paintingAttributes {}
+export interface PaintingModel extends Model<PaintingAttributes>, PaintingAttributes {}
 export class painting extends Model {
+  public id!: number
   public title!: string
   public yearStart!: number
   public yearEnd?: number
@@ -96,11 +98,15 @@ export class painting extends Model {
   public imageKey?: string
   public filename?: string
 }
-export type paintingStatic = typeof Model & {
-  new (values?: object, options?: BuildOptions): paintingModel
+export type PaintingStatic = typeof Model & {
+  new (values?: object, options?: BuildOptions): PaintingModel
 }
-export function paintingFactory(sequelize: Sequelize): paintingStatic {
+export function PaintingFactory(sequelize: Sequelize): PaintingStatic {
   return painting.init({
+    id: {
+      type: DataTypes.INTEGER,
+      primaryKey: true,
+    },
     title: DataTypes.STRING,
     yearStart: DataTypes.INTEGER,
     yearEnd: DataTypes.INTEGER,
@@ -118,7 +124,7 @@ export function dbFactory(seqOptions: Options): seqObject {
   const sequelize = new Sequelize(seqOptions)
   const Site = SiteFactory(sequelize)
   const Visitor = VisitorFactory(sequelize)
-  const Painting = paintingFactory(sequelize)
+  const Painting = PaintingFactory(sequelize)
   Site.belongsToMany(Visitor, { through: 'SiteVisitor' })
   Visitor.belongsToMany(Site, { through: 'SiteVisitor' })
 

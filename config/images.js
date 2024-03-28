@@ -1,3 +1,5 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
 const fs = require('fs');
 const Painting = require('./db_bootstrap').seq.Painting;
 fs.readdir(`${__dirname}/../data/Monet`, (err, files) => {
@@ -30,9 +32,12 @@ fs.readdir(`${__dirname}/../data/Monet`, (err, files) => {
                 yearEnd,
                 filename,
             },
-        });
+        }).then((painting) => painting[0]);
     })).then(uploadPaintings);
 });
 function uploadPaintings(paintings) {
-    console.log('Ok, now do upload the paintings somewhere');
+    console.log('Ok, now do upload the paintings somewhere', paintings.length);
+    paintings.forEach((painting) => {
+        console.log('Painting', painting.dataValues);
+    });
 }

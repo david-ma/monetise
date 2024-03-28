@@ -1,9 +1,11 @@
 // PBLZL2
 
+import { PaintingModel, PaintingStatic } from '../models'
+
 // fs read files in directory data/Monet
 
 const fs = require('fs')
-const Painting = require('./db_bootstrap').seq.Painting
+const Painting: PaintingStatic = require('./db_bootstrap').seq.Painting
 
 // Drop table painting
 // Painting.sync({ force: true })
@@ -47,11 +49,14 @@ fs.readdir(`${__dirname}/../data/Monet`, (err, files) => {
           yearEnd,
           filename,
         },
-      })
+      }).then((painting) => painting[0])
     })
   ).then(uploadPaintings)
 })
 
-function uploadPaintings(paintings) {
-  console.log('Ok, now do upload the paintings somewhere')
+function uploadPaintings(paintings: PaintingModel[]) {
+  console.log('Ok, now do upload the paintings somewhere', paintings.length)
+  paintings.forEach((painting) => {
+    console.log('Painting', painting.dataValues)
+  })
 }
