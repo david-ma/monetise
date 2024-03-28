@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.dbFactory = exports.SiteFactory = exports.Site = exports.VisitorFactory = exports.Visitor = void 0;
+exports.dbFactory = exports.paintingFactory = exports.painting = exports.SiteFactory = exports.Site = exports.VisitorFactory = exports.Visitor = void 0;
 const sequelize_1 = require("sequelize");
 class Visitor extends sequelize_1.Model {
 }
@@ -39,16 +39,35 @@ function SiteFactory(sequelize) {
     });
 }
 exports.SiteFactory = SiteFactory;
+class painting extends sequelize_1.Model {
+}
+exports.painting = painting;
+function paintingFactory(sequelize) {
+    return painting.init({
+        title: sequelize_1.DataTypes.STRING,
+        yearStart: sequelize_1.DataTypes.INTEGER,
+        yearEnd: sequelize_1.DataTypes.INTEGER,
+        url: sequelize_1.DataTypes.STRING,
+        imageKey: sequelize_1.DataTypes.STRING,
+        filename: sequelize_1.DataTypes.STRING,
+    }, {
+        sequelize,
+        tableName: 'paintings',
+    });
+}
+exports.paintingFactory = paintingFactory;
 function dbFactory(seqOptions) {
     const sequelize = new sequelize_1.Sequelize(seqOptions);
     const Site = SiteFactory(sequelize);
     const Visitor = VisitorFactory(sequelize);
+    const Painting = paintingFactory(sequelize);
     Site.belongsToMany(Visitor, { through: 'SiteVisitor' });
     Visitor.belongsToMany(Site, { through: 'SiteVisitor' });
     return {
         sequelize,
         Site,
         Visitor,
+        Painting,
     };
 }
 exports.dbFactory = dbFactory;

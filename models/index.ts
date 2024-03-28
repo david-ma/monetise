@@ -79,11 +79,46 @@ export function SiteFactory(sequelize: Sequelize): SiteStatic {
   )
 }
 
+export interface paintingAttributes {
+  title: string
+  yearStart: number
+  yearEnd?: number
+  url?: string
+  imageKey?: string
+  filename?: string
+}
+export interface paintingModel extends Model<paintingAttributes>, paintingAttributes {}
+export class painting extends Model {
+  public title!: string
+  public yearStart!: number
+  public yearEnd?: number
+  public url?: string
+  public imageKey?: string
+  public filename?: string
+}
+export type paintingStatic = typeof Model & {
+  new (values?: object, options?: BuildOptions): paintingModel
+}
+export function paintingFactory(sequelize: Sequelize): paintingStatic {
+  return painting.init({
+    title: DataTypes.STRING,
+    yearStart: DataTypes.INTEGER,
+    yearEnd: DataTypes.INTEGER,
+    url: DataTypes.STRING,
+    imageKey: DataTypes.STRING,
+    filename: DataTypes.STRING,
+  }, {
+    sequelize,
+    tableName: 'paintings',
+  })
+}
+
 import { seqObject } from 'thalia'
 export function dbFactory(seqOptions: Options): seqObject {
   const sequelize = new Sequelize(seqOptions)
   const Site = SiteFactory(sequelize)
   const Visitor = VisitorFactory(sequelize)
+  const Painting = paintingFactory(sequelize)
   Site.belongsToMany(Visitor, { through: 'SiteVisitor' })
   Visitor.belongsToMany(Site, { through: 'SiteVisitor' })
 
@@ -91,5 +126,6 @@ export function dbFactory(seqOptions: Options): seqObject {
     sequelize,
     Site,
     Visitor,
+    Painting,
   }
 }
