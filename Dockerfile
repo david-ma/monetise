@@ -1,4 +1,4 @@
-FROM frostickle/thalia:1.0.3 as base
+FROM frostickle/thalia:1.0.4 as base
 
 USER root
 

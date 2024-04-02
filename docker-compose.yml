@@ -6,6 +6,7 @@ services:
       - '7777:1337'
     environment:
       - NODE_ENV=docker
+      - NODE_OPTIONS=--max_http_header_size=65536
     restart: always
 
   db:

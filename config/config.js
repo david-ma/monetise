@@ -109,7 +109,7 @@ let config = {
                 controller.response.end();
                 return;
             }
-            else if (controller.request.url.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp)$/i)) {
+            else if (controller.request.url.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp|avif)$/i)) {
                 controller.response.writeHead(302, {
                     Location: '/monet',
                 });
@@ -122,13 +122,9 @@ let config = {
                 });
             }
         },
-        monet: function (controller) {
-            var image = Math.floor(Math.random() * 67);
-            controller.response.writeHead(302, {
-                Location: `/images/assets/${image}.jpg`,
-            });
-            controller.response.end();
-        },
+        _next: monetAsset,
+        assets: monetAsset,
+        monet: monetAsset,
         visitors: function (controller) {
             Promise.all([
                 controller.db.Visitor.findAll(),
@@ -167,6 +163,13 @@ let config = {
     },
 };
 exports.config = config;
+function monetAsset(controller) {
+    var image = Math.floor(Math.random() * 67);
+    controller.response.writeHead(302, {
+        Location: `/images/assets/${image}.jpg`,
+    });
+    controller.response.end();
+}
 var google_analytics_id = process.env.GA_ID || 'UA-49861162-2';
 function addGa(html) {
     if (google_analytics_id) {

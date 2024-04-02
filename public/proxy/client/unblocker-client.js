@@ -18,6 +18,8 @@
   // call() and apply() on `this || original_thing`
   // prevent a failure in one initializer from stopping subsequent initializers
 
+  const banlist = [ 'posthog' ]
+
   function fixUrl(urlStr, config, location) {
     // Silence this debugging. Perhaps put it behind a dev flag?
     // console.log("Fixing URL", {
@@ -28,6 +30,11 @@
 
     if (!urlStr) {
       console.error("No urlStr provided", urlStr);
+      return;
+    }
+
+    if(banlist.some(banned => urlStr.includes(banned))) {
+      console.log("Banned URL:", urlStr)
       return;
     }
 
@@ -287,7 +294,7 @@ document.addEventListener('DOMContentLoaded', function() {
   window.setInterval(function() {
     // console.log('tick')
     monetiseAllImages();
-  }, 150)
+  }, 500)
 
 })
 
@@ -300,7 +307,8 @@ function monetiseAllImages() {
     replaceImage(images[i]);
   }
 
-  const backgroundImages = document.querySelectorAll('[style*="background-image"]');
+  const backgroundImages = document.querySelectorAll('[style*="background-image*"]');
+  // console.log(`checking ${backgroundImages.length} background images`)
   for(let i = 0; i < backgroundImages.length; i++) {
     replaceBackgroundImage(backgroundImages[i]);
   }

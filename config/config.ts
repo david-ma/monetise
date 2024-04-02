@@ -126,7 +126,7 @@ let config: Thalia.WebsiteConfig = {
         return
       } else if (
         // Check if it's an image
-        controller.request.url.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp)$/i)
+        controller.request.url.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp|avif)$/i)
       ) {
         controller.response.writeHead(302, {
           Location: '/monet',
@@ -139,15 +139,9 @@ let config: Thalia.WebsiteConfig = {
         })
       }
     },
-    monet: function (controller) {
-      var image = Math.floor(Math.random() * 67)
-
-      // serve a random image by Monet
-      controller.response.writeHead(302, {
-        Location: `/images/assets/${image}.jpg`,
-      })
-      controller.response.end()
-    },
+    _next: monetAsset,
+    assets: monetAsset,
+    monet: monetAsset,
     visitors: function (controller) {
       Promise.all([
         controller.db.Visitor.findAll(),
@@ -197,6 +191,16 @@ let config: Thalia.WebsiteConfig = {
       )
     },
   },
+}
+
+function monetAsset(controller: Thalia.Controller) {
+  var image = Math.floor(Math.random() * 67)
+
+  // serve a random image by Monet
+  controller.response.writeHead(302, {
+    Location: `/images/assets/${image}.jpg`,
+  })
+  controller.response.end()
 }
 
 export { config }
