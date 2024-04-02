@@ -19,11 +19,12 @@
   // prevent a failure in one initializer from stopping subsequent initializers
 
   function fixUrl(urlStr, config, location) {
-    console.log("Fixing URL", {
-      urlStr,
-      config,
-      location,
-    });
+    // Silence this debugging. Perhaps put it behind a dev flag?
+    // console.log("Fixing URL", {
+    //   urlStr,
+    //   config,
+    //   location,
+    // });
 
     if (!urlStr) {
       console.error("No urlStr provided", urlStr);
