@@ -19,6 +19,11 @@
   // prevent a failure in one initializer from stopping subsequent initializers
 
   function fixUrl(urlStr, config, location) {
+    if (!urlStr) {
+      console.error("No urlStr provided", urlStr);
+      return;
+    }
+
     var currentRemoteHref;
     if (location.pathname.substr(0, config.prefix.length) === config.prefix) {
       currentRemoteHref =
@@ -183,16 +188,20 @@
         }
         var wsPath = parsedUrl[3];
         // prefix the websocket with the proxy server
-        return new _WebSocket(
-          wsProto +
-            proxyHost +
-            prefix +
-            "http" +
-            wsSecure +
-            "://" +
-            wsHost +
-            wsPath
-        );
+        try {
+          return new _WebSocket(
+            wsProto +
+              proxyHost +
+              prefix +
+              "http" +
+              wsSecure +
+              "://" +
+              wsHost +
+              wsPath
+          );
+        } catch (e) {
+          console.error("Failed to create WebSocket", e);
+        }
       }
       // fallback in case the regex failed
       return new _WebSocket(url, protocols);
@@ -266,42 +275,58 @@
 document.addEventListener('DOMContentLoaded', function() {
   console.log("Replace images with paintings by Claude Monet")
 
-  const images = document.getElementsByTagName('img');
+  monetiseAllImages();
 
-  for (var i = 0; i < images.length; i++) {
-    var image = images[i];
-    replaceImage(image);
-  }
+  window.setInterval(function() {
+    // console.log('tick')
+    monetiseAllImages();
+  }, 150)
 
-  // window.setTimeout(function() {
-  //   console.log("Second pass")
-  //   const images = document.getElementsByTagName('img');
-
-  //   for (var i = 0; i < images.length; i++) {
-  //     var image = images[i];
-  //     replaceImage(image);
-  //   }
-  // }, 500)
-
-
-  // Anything with background-image
-  const elements = document.querySelectorAll('[style*="background-image"]');
-  for (var i = 0; i < elements.length; i++) {
-    var element = elements[i];
-    const style = element.getAttribute('style');
-    const random = Math.floor(Math.random() * 10000) + i;
-    const url = `/monet/${random}`
-    element.style.backgroundImage = `url(${url})`;
-  }
 })
 
+globalThis.monetiseAllImages = monetiseAllImages;
+
+function monetiseAllImages() {
+  // select all images
+  const images = document.getElementsByTagName('img');
+  for(let i = 0; i < images.length; i++) {
+    replaceImage(images[i]);
+  }
+
+  const backgroundImages = document.querySelectorAll('[style*="background-image"]');
+  for(let i = 0; i < backgroundImages.length; i++) {
+    replaceBackgroundImage(backgroundImages[i]);
+  }
+}
+
+function replaceBackgroundImage(element){
+  if (element.getAttribute('monetised')) {
+    // console.log("element already monetised")
+    return;
+  }
+
+  element.setAttribute('monetised', 'true')
+  const style = element.getAttribute('style');
+  const random = Math.floor(Math.random() * 10000) + i;
+  const url = `/monet/${random}`
+  element.style.backgroundImage = `url(${url})`;
+}
+
 function replaceImage(image){
+  // .filter(image => !image.monetised)
+  if (image.getAttribute('monetised')) {
+    // console.log("image already monetised")
+    return;
+  }
+  // console.log("replacing image")
   const url = '/monet'
 
   width = image.width || 300;
   height = image.height || 300;
   id = Math.floor(Math.random() * 10000) + 1;
+  image.setAttribute('monetised', 'true')
+
   image.src = `${url}/${width}w${height}h${id}`;
   image.srcset = `${url}/${width}w${height}h${id}`;
-  image.style = `width: ${width}px; height: ${height}px; object-fit: cover;`;
+  // image.style = `width: ${width}px; height: ${height}px; object-fit: cover;`;
 }

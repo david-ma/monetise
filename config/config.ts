@@ -9,6 +9,7 @@ var unblockerConfig = {
   host: 'monetiseyourwebsite.com',
   prefix: '/proxy/',
   responseMiddleware: [googleAnalyticsMiddleware],
+  clientScripts: true,
 }
 const handleRequest = unblocker(unblockerConfig)
 
