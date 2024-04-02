@@ -19,6 +19,12 @@
   // prevent a failure in one initializer from stopping subsequent initializers
 
   function fixUrl(urlStr, config, location) {
+    console.log("Fixing URL", {
+      urlStr,
+      config,
+      location,
+    });
+
     if (!urlStr) {
       console.error("No urlStr provided", urlStr);
       return;
@@ -36,7 +42,7 @@
     }
 
     // check if it's already proxied (root-relative)
-    if (urlStr.substr(0, config.prefix.length) === config.prefix) {
+    if (urlStr.substr && urlStr.substr(0, config.prefix.length) === config.prefix) {
       return urlStr;
     }
 
