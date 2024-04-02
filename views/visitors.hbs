@@ -35,7 +35,7 @@
     <tr>
       <th>id</th>
       <th>ip</th>
-      <th>count</th>
+      <th>sites</th>
       <th>country</th>
       <th>city</th>
       <th>longitude</th>
@@ -46,7 +46,18 @@
     <tr>
       <td>{{id}}</td>
       <td>{{ip}}</td>
-      <td>{{count}}</td>
+      <td>
+        <details>
+          <summary>
+            {{count}}
+          </summary>
+          <ul>
+            {{#each sites}}
+            <li>{{this.dataValues.url}}</li>
+            {{/each}}
+          </ul>
+        </details>
+      </td>
       <td>{{country}}</td>
       <td>{{city}}</td>
       <td>{{longitude}}</td>

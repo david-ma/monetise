@@ -133,7 +133,7 @@ let config = {
             ]).then(([visitors, lookup, views]) => {
                 Promise.all(visitors.map((visitor) => {
                     const blob = lookup.get(visitor.ip);
-                    return visitor.countSites().then((count) => {
+                    return visitor.getSites().then((sites) => {
                         const createdAt = visitor.createdAt;
                         const date = createdAt.toLocaleString();
                         return {
@@ -143,10 +143,12 @@ let config = {
                             longitude: blob ? blob.location.longitude : 'Unknown',
                             latitude: blob ? blob.location.latitude : 'Unknown',
                             date,
-                            count,
+                            sites,
+                            count: sites.length,
                         };
                     });
                 })).then((data) => {
+                    data = data.sort((a, b) => b.count - a.count);
                     const template = handlebars_1.default.compile(views.visitors);
                     controller.response.end(template({ visitors: data }));
                 }, (error) => {

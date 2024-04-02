@@ -154,7 +154,7 @@ let config: Thalia.WebsiteConfig = {
             visitors.map((visitor) => {
               const blob = lookup.get(visitor.ip)
 
-              return visitor.countSites().then((count) => {
+              return visitor.getSites().then((sites) => {
                 const createdAt: Date = visitor.createdAt
                 const date = createdAt.toLocaleString()
 
@@ -165,12 +165,15 @@ let config: Thalia.WebsiteConfig = {
                   longitude: blob ? blob.location.longitude : 'Unknown',
                   latitude: blob ? blob.location.latitude : 'Unknown',
                   date,
-                  count,
+                  sites,
+                  count: sites.length,
                 }
               })
             })
           ).then(
             (data) => {
+              data = data.sort((a, b) => b.count - a.count)
+
               const template = Handlebars.compile(views.visitors)
               controller.response.end(template({ visitors: data }))
             },
