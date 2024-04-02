@@ -45,14 +45,16 @@ export class Site extends Model {
   }
 
   addVisitor(visitor: VisitorModel) {
+    const thatSite: SiteModel = this
     return visitor.getSites().then((sites) => {
-      if (sites.find((site) => site.id === this.id)) {
+      if (sites.find((site) => site.id === thatSite.id)) {
         return null
       }
 
-      visitor.addSite(this)
-      return [this, visitor]
-    })
+      visitor.addSite(thatSite)
+
+      return [thatSite, visitor]
+    }, console.error)
   }
 }
 
@@ -88,7 +90,9 @@ export interface PaintingAttributes {
   imageKey?: string
   filename?: string
 }
-export interface PaintingModel extends Model<PaintingAttributes>, PaintingAttributes {}
+export interface PaintingModel
+  extends Model<PaintingAttributes>,
+    PaintingAttributes {}
 export class painting extends Model {
   public id!: number
   public title!: string
@@ -102,21 +106,24 @@ export type PaintingStatic = typeof Model & {
   new (values?: object, options?: BuildOptions): PaintingModel
 }
 export function PaintingFactory(sequelize: Sequelize): PaintingStatic {
-  return painting.init({
-    id: {
-      type: DataTypes.INTEGER,
-      primaryKey: true,
+  return painting.init(
+    {
+      id: {
+        type: DataTypes.INTEGER,
+        primaryKey: true,
+      },
+      title: DataTypes.STRING,
+      yearStart: DataTypes.INTEGER,
+      yearEnd: DataTypes.INTEGER,
+      url: DataTypes.STRING,
+      imageKey: DataTypes.STRING,
+      filename: DataTypes.STRING,
     },
-    title: DataTypes.STRING,
-    yearStart: DataTypes.INTEGER,
-    yearEnd: DataTypes.INTEGER,
-    url: DataTypes.STRING,
-    imageKey: DataTypes.STRING,
-    filename: DataTypes.STRING,
-  }, {
-    sequelize,
-    tableName: 'paintings',
-  })
+    {
+      sequelize,
+      tableName: 'paintings',
+    }
+  )
 }
 
 import { seqObject } from 'thalia'

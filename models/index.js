@@ -17,13 +17,14 @@ class Site extends sequelize_1.Model {
         return this.description && this.description.length > 0;
     }
     addVisitor(visitor) {
+        const thatSite = this;
         return visitor.getSites().then((sites) => {
-            if (sites.find((site) => site.id === this.id)) {
+            if (sites.find((site) => site.id === thatSite.id)) {
                 return null;
             }
-            visitor.addSite(this);
-            return [this, visitor];
-        });
+            visitor.addSite(thatSite);
+            return [thatSite, visitor];
+        }, console.error);
     }
 }
 exports.Site = Site;
