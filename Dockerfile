@@ -2,7 +2,7 @@ FROM frostickle/thalia:1.0.3 as base
 
 USER root
 
-RUN mkdir -p /usr/app/Thalia/websites/monetise
+RUN mkdir -p /usr/app/Thalia/websites/monetise/data
 COPY package.json /usr/app/Thalia/websites/monetise
 
 WORKDIR /usr/app/Thalia/websites/monetise
