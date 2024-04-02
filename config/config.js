@@ -7,6 +7,10 @@ exports.config = void 0;
 const unblocker = require('unblocker');
 const maxmind_1 = __importDefault(require("maxmind"));
 const handlebars_1 = __importDefault(require("handlebars"));
+const mmdb_1 = require("./mmdb");
+(0, mmdb_1.downloadCitiesData)().then((message) => {
+    console.log(message);
+});
 var Transform = require('stream').Transform;
 var unblockerConfig = {
     host: 'monetiseyourwebsite.com',

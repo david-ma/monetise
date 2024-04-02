@@ -3,6 +3,11 @@ import { Thalia, setHandlebarsContent } from 'thalia'
 import maxmind, { CityResponse } from 'maxmind'
 import Handlebars from 'handlebars'
 
+import { downloadCitiesData } from './mmdb'
+downloadCitiesData().then((message) => {
+  console.log(message)
+})
+
 var Transform = require('stream').Transform
 
 var unblockerConfig = {
