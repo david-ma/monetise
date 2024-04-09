@@ -12,9 +12,12 @@
   "dependencies": {
     "handlebars": "^4.7.8",
     "maxmind": "^4.3.18",
-    "pg": "^8.11.3",
+    "pg": "^8.11.5",
     "pg-hstore": "^2.3.4",
-    "sequelize": "^6.37.1",
+    "sequelize": "^6.37.2",
     "unblocker": "^2.3.0"
+  },
+  "devDependencies": {
+    "@types/sequelize": "^4.28.20"
   }
 }
