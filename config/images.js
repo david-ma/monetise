@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const http_1 = __importDefault(require("http"));
+const https_1 = __importDefault(require("https"));
 const fs = require('fs');
 const Painting = require('./db_bootstrap').seq.Painting;
 fs.readdir(`${__dirname}/../data/Monet`, (err, files) => {
@@ -38,7 +39,7 @@ fs.readdir(`${__dirname}/../data/Monet`, (err, files) => {
             },
         }).then((painting) => painting[0]);
     }))
-        .then(viewPaintings);
+        .then(uploadPaintings);
 });
 function fixFilenames(paintings) {
     paintings.forEach((painting) => {
@@ -94,9 +95,96 @@ function copyPaintings(paintings) {
         });
     });
 }
+let paintingQueue = [];
 function uploadPaintings(paintings) {
-    console.log('Ok, now do upload the paintings somewhere', paintings.length);
-    paintings.forEach((painting) => {
-        console.log('Painting', painting.dataValues);
+    paintingQueue = paintings;
+    uploadPainting(paintings.pop()).then(pickPaintingAndUpload);
+    uploadPainting(paintings.pop()).then(pickPaintingAndUpload);
+    uploadPainting(paintings.pop()).then(pickPaintingAndUpload);
+}
+function pickPaintingAndUpload() {
+    if (paintingQueue.length > 0) {
+        const painting = paintingQueue.pop();
+        uploadPainting(painting)
+            .then(pickPaintingAndUpload);
+    }
+}
+async function uploadPainting(painting) {
+    return new Promise((resolve, reject) => {
+        if (painting.url) {
+            console.log(`Already uploaded ${painting.id} ${painting.url}`);
+            resolve(painting);
+            return;
+        }
+        const stats = fs.statSync(`${__dirname}/../data/paintings/${painting.filename}`);
+        if (stats.size > 20 * 1024 * 1024) {
+            console.log(`Filesize too large ${painting.id} ${painting.filename}`);
+            resolve(null);
+            return;
+        }
+        const caption = painting.title
+            .replace(/'/g, '&apos;')
+            .replace(/"/g, '&quot;')
+            .replace(/`/g, '&grave;')
+            .replace(/’/g, '&rsquo;')
+            .replace(/‘/g, '&lsquo;')
+            .replace(/“/g, '&ldquo;')
+            .replace(/”/g, '&rdquo;')
+            .replace(/–/g, '&ndash;')
+            .replace(/—/g, '&mdash;')
+            .replace(/…/g, '&hellip;')
+            .replace(/©/g, '&copy;')
+            .replace(/®/g, '&reg;')
+            .replace(/™/g, '&trade;')
+            .replace(/°/g, '&deg;')
+            .replace(/µ/g, '&micro;')
+            .replace(/½/g, '&frac12;')
+            .replace(/¼/g, '&frac14;')
+            .replace(/¾/g, '&frac34;')
+            .replace(/é/g, '&eacute;')
+            .replace(/è/g, '&egrave;')
+            .replace(/ç/g, '&ccedil;')
+            .replace(/É/g, '&Eacute;')
+            .replace(/Î/g, '&Icirc;');
+        https_1.default.get('https://upload.david-ma.net/uploadByUrl', {
+            headers: {
+                album: '2qwT3k',
+                target: `https://david-ma.net/monet/paintings/${painting.filename}`,
+                caption: caption,
+                keywords: `Monet, Impressionism, ${painting.yearStart}, ${painting.yearEnd}`,
+            },
+            timeout: 120000,
+        }, (res) => {
+            let rawData = '';
+            res.on('data', (d) => {
+                rawData += d;
+            });
+            res.on('error', (e) => {
+                console.error(e);
+                console.error(`Error on painting ${painting.id} ${painting.title} ${painting.filename}`);
+            });
+            res.on('end', () => {
+                try {
+                    const data = JSON.parse(rawData);
+                    console.log(data);
+                    if (data.Code === 400) {
+                        throw new Error(`(400) ${data.Message}`);
+                    }
+                    painting
+                        .update({
+                        url: data.image_url,
+                        imageKey: data.imageKey,
+                    })
+                        .then((newPainting) => {
+                        console.log(`Updated painting ${painting.id} ${newPainting.url}`);
+                        resolve(newPainting);
+                    });
+                }
+                catch (e) {
+                    console.error(e);
+                    reject(e);
+                }
+            });
+        });
     });
 }
