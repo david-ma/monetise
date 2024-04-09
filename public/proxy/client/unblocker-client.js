@@ -33,6 +33,11 @@
       return;
     }
 
+    if (typeof urlStr !== "string" || typeof urlStr.includes !== "function") {
+      console.error("urlStr is not a string", urlStr);
+      return;
+    }
+
     if(banlist.some(banned => urlStr.includes(banned))) {
       console.log("Banned URL:", urlStr)
       return;
@@ -301,22 +306,28 @@ document.addEventListener('DOMContentLoaded', function() {
 globalThis.monetiseAllImages = monetiseAllImages;
 
 function monetiseAllImages() {
+  let count = 0;
   // select all images
   const images = document.getElementsByTagName('img');
   for(let i = 0; i < images.length; i++) {
     replaceImage(images[i]);
+    count++;
   }
 
-  const backgroundImages = document.querySelectorAll('[style*="background-image*"]');
+  const backgroundImages = document.querySelectorAll('[style*="background-image"]');
   // console.log(`checking ${backgroundImages.length} background images`)
+  // backgroundImages.forEach(replaceBackgroundImage)
   for(let i = 0; i < backgroundImages.length; i++) {
-    replaceBackgroundImage(backgroundImages[i]);
+    replaceBackgroundImage(backgroundImages[i], i);
+    count++;
   }
+  console.log(`replaced ${count} images`)
 }
 
-function replaceBackgroundImage(element){
-  if (element.getAttribute('monetised')) {
-    // console.log("element already monetised")
+function replaceBackgroundImage(element, i){
+  if (element.getAttribute('monetised')){
+    console.log("element already monetised")
+    console.log(element)
     return;
   }
 
@@ -324,7 +335,12 @@ function replaceBackgroundImage(element){
   const style = element.getAttribute('style');
   const random = Math.floor(Math.random() * 10000) + i;
   const url = `/monet/${random}`
+  console.log("Original style", style)
+  console.log("Setting background image", `url(${url})`)
+
+  element.style.replaceBackgroundImage = `url(${url})`;
   element.style.backgroundImage = `url(${url})`;
+  element.setAttribute('style', `background-image: url(${url})`)
 }
 
 function replaceImage(image){

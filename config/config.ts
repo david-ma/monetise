@@ -126,13 +126,11 @@ let config: Thalia.WebsiteConfig = {
         return
       } else if (
         // Check if it's an image
-        controller.request.url.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp|avif)$/i)
+        controller.request.url.match(
+          /\.(jpeg|jpg|gif|png|webp|svg|bmp|avif)(\?.*)?$$/i
+        )
       ) {
-        controller.response.writeHead(302, {
-          Location: '/monet',
-        })
-        controller.response.end()
-        return
+        monetAsset(controller)
       } else {
         siteVisit(controller).then(() => {
           handleRequest(controller.request, controller.response)

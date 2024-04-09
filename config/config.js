@@ -109,12 +109,8 @@ let config = {
                 controller.response.end();
                 return;
             }
-            else if (controller.request.url.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp|avif)$/i)) {
-                controller.response.writeHead(302, {
-                    Location: '/monet',
-                });
-                controller.response.end();
-                return;
+            else if (controller.request.url.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp|avif)(\?.*)?$$/i)) {
+                monetAsset(controller);
             }
             else {
                 siteVisit(controller).then(() => {
