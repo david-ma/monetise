@@ -160,6 +160,8 @@ let config = {
             maxmind_1.default.open(`${__dirname}/../data/city.mmdb`).then((lookup) => {
                 const ip = controller.query.ip || controller.ip;
                 const blob = lookup.get(ip);
+                controller.response.setHeader('Content-Type', 'application/json');
+                controller.response.setHeader('Access-Control-Allow-Origin', '*');
                 controller.response.end(JSON.stringify(blob));
             }, (error) => {
                 console.error(error);
