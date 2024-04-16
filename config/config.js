@@ -156,6 +156,16 @@ let config = {
                 controller.response.end("Error - We probably didn't download the city IP lookup database.");
             });
         },
+        geoip: function (controller) {
+            maxmind_1.default.open(`${__dirname}/../data/city.mmdb`).then((lookup) => {
+                const ip = controller.query.ip || controller.ip;
+                const blob = lookup.get(ip);
+                controller.response.end(JSON.stringify(blob));
+            }, (error) => {
+                console.error(error);
+                controller.response.end("Error - We probably didn't download the city IP lookup database.");
+            });
+        },
     },
 };
 exports.config = config;
