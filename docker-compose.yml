@@ -8,6 +8,10 @@ services:
       - NODE_ENV=docker
       - NODE_OPTIONS=--max_http_header_size=65536
     restart: always
+    depends_on:
+      - db
+    links:
+      - db
 
   db:
     image: postgres
@@ -21,6 +25,7 @@ services:
       # PGUSER: 'postgres'
       POSTGRES_USER: 'monetise'
       POSTGRES_PASSWORD: 'monetise_password'
+    restart: always
 
 volumes:
   postgresqldata:
