@@ -51,7 +51,14 @@ async function siteVisit(controller) {
             defaults: { userAgent: controller.request.headers['user-agent'] },
         }),
     ]).then(([site, visitor]) => {
-        return site[0].addVisitor(visitor[0]);
+        visitor[0].getSites().then((sites) => {
+            if (!sites.find((s) => s.id === site[0].id)) {
+                visitor[0].addSite(site[0]);
+            }
+            else {
+                console.log('Visitor already visited site');
+            }
+        });
     });
 }
 let config = {
@@ -102,7 +109,7 @@ let config = {
             const ipAddressRegex = /(\d+\.?){4}/;
             if (ipAddressRegex.test(base)) {
                 console.log('IP Address found!', base);
-                console.log("Full URL", url);
+                console.log('Full URL', url);
                 controller.response.end('401 Error, Not allowed to visit IP addresses');
                 return;
             }
