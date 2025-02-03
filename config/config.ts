@@ -96,6 +96,26 @@ let config: Thalia.WebsiteConfig = {
       let url = controller.request.url
       const sections = url.split('/proxy/')
       url = controller.request.url = `${sections[0]}/proxy/${sections.pop()}`
+      var base = url
+      try {
+        base = url.split('//')[1]
+        base = base.split('/')[0]
+        base = base.split(':')[0]
+      } catch (e) {
+        controller.response.end("500 Error, couldn't read target host")
+        return
+      }
+
+      const ipAddressRegex = /(\d+\.?){4}/
+      // TODO: Filter out IPv6 addresses
+      // const v6IpAddressRegex = /(\w+:?){8}/
+
+      if (ipAddressRegex.test(base)) {
+        console.log('IP Address found!', base)
+        console.log("Full URL", url)
+        controller.response.end('401 Error, Not allowed to visit IP addresses')
+        return
+      }
 
       const cookies = controller.cookies
 

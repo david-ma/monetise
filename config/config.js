@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.config = void 0;
 const unblocker = require('unblocker');
+const thalia_1 = require("thalia");
 const maxmind_1 = __importDefault(require("maxmind"));
 const handlebars_1 = __importDefault(require("handlebars"));
 const mmdb_1 = require("./mmdb");
@@ -88,6 +89,23 @@ let config = {
             let url = controller.request.url;
             const sections = url.split('/proxy/');
             url = controller.request.url = `${sections[0]}/proxy/${sections.pop()}`;
+            var base = url;
+            try {
+                base = url.split('//')[1];
+                base = base.split('/')[0];
+                base = base.split(':')[0];
+            }
+            catch (e) {
+                controller.response.end("500 Error, couldn't read target host");
+                return;
+            }
+            const ipAddressRegex = /(\d+\.?){4}/;
+            if (ipAddressRegex.test(base)) {
+                console.log('IP Address found!', base);
+                console.log("Full URL", url);
+                controller.response.end('401 Error, Not allowed to visit IP addresses');
+                return;
+            }
             const cookies = controller.cookies;
             if (url.indexOf('/proxy/client/') > -1) {
                 controller.routeFile(`${__dirname}/../public/proxy/client/unblocker-client.js`);
