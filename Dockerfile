@@ -9,7 +9,7 @@ WORKDIR /usr/app/Thalia/websites/monetise
 RUN pnpm install
 COPY . /usr/app/Thalia/websites/monetise
 
-RUN unlink /usr/app/Thalia/websites/monetise/node_modules/thalia
+# RUN unlink /usr/app/Thalia/websites/monetise/node_modules/thalia
 RUN ln -s /usr/app/Thalia /usr/app/Thalia/websites/monetise/node_modules/thalia
 
 WORKDIR /usr/app/Thalia
