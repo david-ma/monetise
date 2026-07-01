@@ -9,26 +9,26 @@
     "dev": "thalia-develop",
     "paintings": "bun config/images.ts",
     "test": "bun test",
-    "typecheck": "bunx tsc --noEmit -p tsconfig.json"
+    "typecheck": "bunx tsc --noEmit -p tsconfig.json",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "drizzle-orm": "^0.44.7",
     "handlebars": "^4.7.8",
     "maxmind": "^4.3.18",
-    "pg": "^8.11.5",
-    "pg-hstore": "^2.3.4",
-    "sequelize": "^6.37.2",
+    "mysql2": "^3.11.0",
     "thalia": "github:david-ma/Thalia",
     "unblocker": "^2.3.0"
   },
   "devDependencies": {
     "@types/formidable": "^3.5.1",
     "@types/nodemailer": "^8.0.1",
-    "@types/sequelize": "^4.28.20",
     "bun-types": "1.3.3",
-    "sqlite3": "^6.0.1",
+    "drizzle-kit": "^0.31.8",
     "typescript": "^5.8.3"
   }
 }

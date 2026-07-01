@@ -1,6 +1,6 @@
-// PBLZL2
+// Legacy painting import script — needs rewriting for Drizzle (see models/schema.ts paintings table).
+// Excluded from `bun typecheck` until migrated.
 
-import { PaintingModel, PaintingStatic } from '../models'
 import http from 'http'
 import https from 'https'
 

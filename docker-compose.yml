@@ -11,29 +11,28 @@ services:
       - ./data:/app/data
     # restart: always
     depends_on:
-      - db
-    links:
-      - db
+      db:
+        condition: service_healthy
 
   db:
-    image: postgres
+    image: mariadb:11.4.7
     volumes:
-      - postgresqldata:/var/lib/postgresql/data
+      - mariadbdata:/var/lib/mysql
     expose:
-      - '5432'
+      - '3306'
     ports:
-      - '5233:5432'
+      - '5233:3306'
     environment:
-      POSTGRES_USER: 'monetise'
-      POSTGRES_PASSWORD: 'monetise_password'
-      POSTGRES_DB: 'monetise'
+      MYSQL_DATABASE: monetise
+      MYSQL_USER: monetise
+      MYSQL_PASSWORD: monetise_password
+      MYSQL_ROOT_PASSWORD: monetise_root_password
     # restart: always
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U monetise"]
-      interval: 1m30s
-      timeout: 30s
+      test: ['CMD', 'healthcheck.sh', '--connect', '--innodb_initialized']
+      interval: 5s
+      timeout: 1s
       retries: 5
-      start_period: 30s
 
 volumes:
-  postgresqldata:
+  mariadbdata:

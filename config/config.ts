@@ -11,7 +11,8 @@ import maxmind, { type CityResponse } from 'maxmind'
 import Handlebars from 'handlebars'
 
 import { downloadCitiesData } from './mmdb'
-import { seq, initDb, isDbReady } from './db_bootstrap'
+import { paintings, sites, siteVisitors, visitors as visitorsTable } from '../models/schema'
+import { getAllSites, getVisitorsWithSites, recordSiteVisit, type MonetiseDb } from '../models/queries'
 
 const nodeRequire = nodeCreateRequire(import.meta.url)
 const unblocker = nodeRequire('unblocker')
@@ -19,8 +20,6 @@ const unblocker = nodeRequire('unblocker')
 const configDir = path.dirname(fileURLToPath(import.meta.url))
 const rootDir = path.join(configDir, '..')
 const srcDir = path.join(rootDir, 'src')
-
-initDb()
 
 downloadCitiesData().then((message) => {
   console.log(message)
@@ -55,12 +54,18 @@ function setVisitorCookie(res: ServerResponse, ip: string): void {
   res.setHeader('Set-Cookie', `cookieName=${ip}; Path=/`)
 }
 
+function monetiseDb(website: Website): MonetiseDb | null {
+  return website.db?.drizzle ? (website.db.drizzle as unknown as MonetiseDb) : null
+}
+
 async function siteVisit(
+  website: Website,
   req: IncomingMessage,
   ip: string,
   userAgent: string | undefined,
 ): Promise<void> {
-  if (!isDbReady()) return
+  const db = monetiseDb(website)
+  if (!db) return
 
   let url = req.url ?? ''
 
@@ -82,32 +87,10 @@ async function siteVisit(
     }
   }
 
-  return Promise.all([
-    seq.Site.findOrCreate({
-      where: { url },
-      defaults: {
-        url,
-        title: 'title',
-        description: 'description',
-        keywords: 'keywords',
-      },
-    }),
-    seq.Visitor.findOrCreate({
-      where: { ip },
-      defaults: { ip, userAgent: userAgent ?? '' },
-    }),
-  ]).then(([site, visitor]) => {
-    visitor[0].getSites().then((sites) => {
-      if (!sites.find((s) => s.id === site[0].id)) {
-        visitor[0].addSite(site[0])
-      } else {
-        console.log('Visitor already visited site')
-      }
-    })
-  })
+  await recordSiteVisit(db, url, ip, userAgent ?? '')
 }
 
-const homepage: Controller = (res, req, _website, requestInfo) => {
+const homepage: Controller = (res, req, website, requestInfo) => {
   setVisitorCookie(res, requestInfo.ip)
 
   if ((botIpAddresses[requestInfo.ip] ?? 0) > 10) {
@@ -125,22 +108,22 @@ const homepage: Controller = (res, req, _website, requestInfo) => {
 
     console.log('IP', requestInfo.ip)
 
-    siteVisit(req, requestInfo.ip, req.headers['user-agent'])
+    siteVisit(website, req, requestInfo.ip, req.headers['user-agent'])
       .catch((error) => console.error('siteVisit failed:', error))
       .then(() => {
-      res.writeHead(302, { Location: `/proxy/${url}` })
-      res.end()
-    })
+        res.writeHead(302, { Location: `/proxy/${url}` })
+        res.end()
+      })
   } else {
-    siteVisit(req, requestInfo.ip, req.headers['user-agent'])
+    siteVisit(website, req, requestInfo.ip, req.headers['user-agent'])
       .catch((error) => console.error('siteVisit failed:', error))
       .then(() => {
-      serveFile(res, path.join(rootDir, 'public', 'index.html'))
-    })
+        serveFile(res, path.join(rootDir, 'public', 'index.html'))
+      })
   }
 }
 
-const proxy: Controller = (res, req, _website, requestInfo) => {
+const proxy: Controller = (res, req, website, requestInfo) => {
   let url = req.url ?? ''
   const sections = url.split('/proxy/')
   url = req.url = `${sections[0]}/proxy/${sections.pop()}`
@@ -181,91 +164,80 @@ const proxy: Controller = (res, req, _website, requestInfo) => {
   } else if (req.url?.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp|avif)(\?.*)?$/i)) {
     monetAsset(res)
   } else {
-    siteVisit(req, requestInfo.ip, req.headers['user-agent'])
+    siteVisit(website, req, requestInfo.ip, req.headers['user-agent'])
       .catch((error) => console.error('siteVisit failed:', error))
       .then(() => {
-      handleRequest(req, res)
-    })
+        handleRequest(req, res)
+      })
   }
 }
 
 const websites: Controller = (res, _req, website, _requestInfo) => {
-  if (!isDbReady()) {
+  const db = monetiseDb(website)
+  if (!db) {
     res.end('Database unavailable')
     return
   }
 
-  Promise.all([seq.Site.findAll()])
-    .then(
-      ([sites]) => {
-        const domains: Record<string, unknown> = {}
+  getAllSites(db)
+    .then((siteRows) => {
+      const domains: Record<string, unknown> = {}
 
-        sites.forEach((site) => {
-          const domain = site.url.match(/:\/+(.*?)\//)
-          if (!domain) {
-            console.log(site.url)
-          }
-        })
+      siteRows.forEach((site) => {
+        const domain = site.url.match(/:\/+(.*?)\//)
+        if (!domain) {
+          console.log(site.url)
+        }
+      })
 
-        website.handlebars.registerPartial('content', readView('websites'))
-        const template = website.handlebars.compile(readView('base'))
-        res.end(template({ sites, domains }))
-      },
-      (error) => {
-        console.error(error)
-        res.end('Error - Could not fetch websites')
-      },
-    )
+      website.handlebars.registerPartial('content', readView('websites'))
+      const template = website.handlebars.compile(readView('base'))
+      res.end(template({ sites: siteRows, domains }))
+    })
+    .catch((error) => {
+      console.error(error)
+      res.end('Error - Could not fetch websites')
+    })
 }
 
-const visitors: Controller = (res, _req, _website, _requestInfo) => {
-  if (!isDbReady()) {
+const visitorsPage: Controller = (res, _req, website, _requestInfo) => {
+  const db = monetiseDb(website)
+  if (!db) {
     res.end('Database unavailable')
     return
   }
 
   Promise.all([
-    seq.Visitor.findAll(),
+    getVisitorsWithSites(db),
     maxmind.open<CityResponse>(path.join(rootDir, 'data', 'city.mmdb')),
-  ]).then(
-    ([visitors, lookup]) => {
-      Promise.all(
-        visitors.map((visitor) => {
-          const blob = lookup.get(visitor.ip)
+  ])
+    .then(([visitorRows, lookup]) => {
+      const data = visitorRows.map((visitor) => {
+        const blob = lookup.get(visitor.ip)
+        const date = (visitor.createdAt ?? new Date()).toLocaleString()
 
-          return visitor.getSites().then((sites) => {
-            const createdAt: Date = visitor.createdAt
-            const date = createdAt.toLocaleString()
+        return {
+          id: visitor.id,
+          ip: visitor.ip,
+          userAgent: visitor.userAgent,
+          city: blob ? blob.city?.names?.en : 'Unknown',
+          country: blob ? blob.country?.names?.en : 'Unknown',
+          longitude: blob ? blob.location?.longitude : 'Unknown',
+          latitude: blob ? blob.location?.latitude : 'Unknown',
+          date,
+          sites: visitor.sites,
+          count: visitor.count,
+        }
+      })
 
-            return {
-              ...visitor.dataValues,
-              city: blob ? blob.city?.names?.en : 'Unknown',
-              country: blob ? blob.country?.names?.en : 'Unknown',
-              longitude: blob ? blob.location?.longitude : 'Unknown',
-              latitude: blob ? blob.location?.latitude : 'Unknown',
-              date,
-              sites,
-              count: sites.length,
-            }
-          })
-        }),
-      ).then(
-        (data) => {
-          const sorted = data.sort((a, b) => b.count - a.count)
-          const template = Handlebars.compile(readView('visitors'))
-          res.end(template({ visitors: sorted }))
-        },
-        (error) => {
-          console.error(error)
-          res.end('Error - Could not fetch visitors')
-        },
-      )
-    },
-    (error) => {
+      const sorted = data.sort((a, b) => b.count - a.count)
+      const template = Handlebars.compile(readView('visitors'))
+      res.end(template({ visitors: sorted }))
+    })
+    .catch((error) => {
       console.error(error)
       res.end("Error - We probably didn't download the city IP lookup database.")
-    },
-  )
+    })
 }
 
 const geoip: Controller = (res, _req, _website, requestInfo) => {
@@ -295,6 +267,14 @@ const monetAssetController: Controller = (res) => monetAsset(res)
 
 const config: RawWebsiteConfig = {
   domains: ['monetiseyourwebsite.com', 'www.monetiseyourwebsite.com'],
+  database: {
+    schemas: {
+      sites,
+      visitors: visitorsTable,
+      siteVisitors,
+      paintings,
+    },
+  },
   controllers: {
     '': homepage,
     homepage,
@@ -303,7 +283,7 @@ const config: RawWebsiteConfig = {
     assets: monetAssetController,
     monet: monetAssetController,
     websites,
-    visitors,
+    visitors: visitorsPage,
     geoip,
   },
 }
