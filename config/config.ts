@@ -27,9 +27,9 @@ downloadCitiesData().then((message) => {
 })
 
 const unblockerConfig = {
-  host: 'monetiseyourwebsite.com',
+  // Omit `host` so unblocker uses the request Host (www vs apex) for referer recovery.
   prefix: '/proxy/',
-  responseMiddleware: [googleAnalyticsMiddleware],
+  responseMiddleware: [noStoreProxyMiddleware, googleAnalyticsMiddleware],
   clientScripts: true,
 }
 const handleRequest = unblocker(unblockerConfig)
@@ -51,8 +51,8 @@ function serveFile(res: ServerResponse, absolutePath: string): void {
   fs.createReadStream(absolutePath).pipe(res)
 }
 
-function setVisitorCookie(res: ServerResponse, ip: string): void {
-  res.setHeader('Set-Cookie', `cookieName=${ip}; Path=/`)
+function setVisitorCookie(res: ServerResponse): void {
+  res.setHeader('Set-Cookie', 'monetiseVisitor=1; Path=/; SameSite=Lax')
 }
 
 function monetiseDb(website: Website): MonetiseDb | null {
@@ -92,7 +92,7 @@ async function siteVisit(
 }
 
 const homepage: Controller = (res, req, website, requestInfo) => {
-  setVisitorCookie(res, requestInfo.ip)
+  setVisitorCookie(res)
 
   if ((botIpAddresses[requestInfo.ip] ?? 0) > 10) {
     res.writeHead(302, { Location: '/robots.txt' })
@@ -170,7 +170,7 @@ const proxy: Controller = (res, req, website, requestInfo) => {
   } else if (sections.length > 2) {
     res.writeHead(302, { Location: url })
     res.end()
-  } else if (!cookies?.cookieName || cookies.cookieName !== requestInfo.ip) {
+  } else if (!cookies?.monetiseVisitor && !cookies?.cookieName) {
     botIpAddresses[requestInfo.ip] = (botIpAddresses[requestInfo.ip] ?? 0) + 1
 
     res.writeHead(303, {
@@ -180,11 +180,17 @@ const proxy: Controller = (res, req, website, requestInfo) => {
   } else if (req.url?.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp|avif)(\?.*)?$/i)) {
     monetAsset(res, req)
   } else {
-    siteVisit(website, req, requestInfo.ip, req.headers['user-agent'])
-      .catch((error) => console.error('siteVisit failed:', error))
-      .then(() => {
-        handleRequest(req, res)
-      })
+    void siteVisit(website, req, requestInfo.ip, req.headers['user-agent']).catch((error) =>
+      console.error('siteVisit failed:', error),
+    )
+    handleRequest(req, res, (err?: Error) => {
+      if (!err) return
+      console.error('Proxy error:', req.url, err)
+      if (!res.headersSent) {
+        res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' })
+        res.end(`Proxy error: ${err.message}`)
+      }
+    })
   }
 }
 
@@ -313,6 +319,16 @@ export { config }
 
 const google_analytics_id = process.env.GA_ID || 'UA-49861162-2'
 
+/** Stop Cloudflare/nginx caching proxied pages (empty-body cache poison broke prod HTML). */
+function noStoreProxyMiddleware(data: {
+  headers?: Record<string, string | string[] | undefined>
+}) {
+  if (!data.headers) return
+  data.headers['cache-control'] = 'no-store, no-cache, must-revalidate'
+  data.headers['pragma'] = 'no-cache'
+  delete data.headers['expires']
+}
+
 function addGa(html: string): string {
   if (google_analytics_id) {
     const ga = [
@@ -333,15 +349,22 @@ function addGa(html: string): string {
 }
 
 function googleAnalyticsMiddleware(data: { contentType?: string; stream: NodeJS.ReadWriteStream }) {
-  if (data.contentType == 'text/html') {
-    data.stream = data.stream.pipe(
-      new Transform({
-        decodeStrings: false,
-        transform(chunk, _encoding, next) {
-          this.push(addGa(chunk.toString()))
-          next()
-        },
-      }),
-    ) as NodeJS.ReadWriteStream
+  if (!data.contentType?.includes('text/html')) {
+    return
   }
+
+  let html = ''
+  data.stream = data.stream.pipe(
+    new Transform({
+      decodeStrings: false,
+      transform(chunk, _encoding, next) {
+        html += chunk.toString()
+        next()
+      },
+      flush(done) {
+        this.push(addGa(html))
+        done()
+      },
+    }),
+  ) as NodeJS.ReadWriteStream
 }

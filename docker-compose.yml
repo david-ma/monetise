@@ -9,7 +9,7 @@ services:
       - NODE_OPTIONS=--max_http_header_size=65536
     volumes:
       - ./data:/usr/app/Thalia/websites/monetise/data
-    # restart: always
+    restart: always
     depends_on:
       db:
         condition: service_healthy
@@ -27,7 +27,7 @@ services:
       MYSQL_USER: monetise
       MYSQL_PASSWORD: monetise_password
       MYSQL_ROOT_PASSWORD: monetise_root_password
-    # restart: always
+    restart: always
     healthcheck:
       test: ['CMD', 'healthcheck.sh', '--connect', '--innodb_initialized']
       interval: 5s

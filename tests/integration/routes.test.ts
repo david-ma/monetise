@@ -35,7 +35,7 @@ describeDatabaseOnline('monetise HTTP routes', () => {
     expect(res.status).toBe(200)
     const html = await res.text()
     expect(html).toContain('html')
-    expect(res.headers.get('set-cookie')).toMatch(/cookieName=/)
+    expect(res.headers.get('set-cookie')).toMatch(/monetiseVisitor=/)
   })
 
   test('GET /?goto= redirects into the proxy', async () => {
@@ -76,7 +76,7 @@ describeDatabaseOnline('monetise HTTP routes', () => {
 
   test('GET /proxy/client/unblocker-client.js serves the injected script', async () => {
     const res = await fetchFromServer('/proxy/client/unblocker-client.js', port, {
-      headers: { cookie: 'cookieName=127.0.0.1' },
+      headers: { cookie: 'monetiseVisitor=1' },
     })
     expect(res.status).toBe(200)
     const js = await res.text()
