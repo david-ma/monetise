@@ -45,10 +45,18 @@ describe('monetise HTTP routes', () => {
     expect(res.headers.get('location')).toBe('/proxy/https://example.com')
   })
 
-  test('GET /monet redirects to a Monet asset', async () => {
+  test('GET /monet redirects to a SmugMug CDN painting', async () => {
     const res = await fetchFromServer('/monet', port, { redirect: 'manual' })
     expect(res.status).toBe(302)
-    expect(res.headers.get('location')).toMatch(/^\/images\/assets\/\d+\.jpg$/)
+    expect(res.headers.get('location')).toMatch(/^https:\/\/photos\.smugmug\.com\/photos\/i-/)
+  })
+
+  test('GET /monet/300w200h42 picks size from dimensions', async () => {
+    const res = await fetchFromServer('/monet/300w200h42', port, { redirect: 'manual' })
+    expect(res.status).toBe(302)
+    const location = res.headers.get('location') ?? ''
+    expect(location).toMatch(/^https:\/\/photos\.smugmug\.com\/photos\/i-/)
+    expect(location).toMatch(/\/S\/i-[A-Za-z0-9]+-S\.jpg$/)
   })
 
   test('GET /visitors responds when database is unavailable', async () => {

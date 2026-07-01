@@ -6,3 +6,4 @@ database.sqlite
 city.mmdb
 data/Monet
 data
+!data/smugmug-monet.json

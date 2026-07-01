@@ -10,6 +10,7 @@ import type { RequestInfo } from 'thalia/server'
 import maxmind, { type CityResponse } from 'maxmind'
 import Handlebars from 'handlebars'
 
+import { monetPaintingUrl, parseMonetRequestPath } from './assets'
 import { downloadCitiesData } from './mmdb'
 import { paintings, sites, siteVisitors, visitors as visitorsTable } from '../models/schema'
 import { getAllSites, getVisitorsWithSites, recordSiteVisit, type MonetiseDb } from '../models/queries'
@@ -162,7 +163,7 @@ const proxy: Controller = (res, req, website, requestInfo) => {
     })
     res.end()
   } else if (req.url?.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp|avif)(\?.*)?$/i)) {
-    monetAsset(res)
+    monetAsset(res, req)
   } else {
     siteVisit(website, req, requestInfo.ip, req.headers['user-agent'])
       .catch((error) => console.error('siteVisit failed:', error))
@@ -257,13 +258,18 @@ const geoip: Controller = (res, _req, _website, requestInfo) => {
   )
 }
 
-function monetAsset(res: ServerResponse): void {
-  const image = Math.floor(Math.random() * 67)
-  res.writeHead(302, { Location: `/images/assets/${image}.jpg` })
+function monetAsset(res: ServerResponse, req: IncomingMessage): void {
+  const parsed = parseMonetRequestPath(req.url ?? '')
+  const location = monetPaintingUrl(
+    parsed
+      ? { width: parsed.width, height: parsed.height, seed: parsed.seed }
+      : {},
+  )
+  res.writeHead(302, { Location: location })
   res.end()
 }
 
-const monetAssetController: Controller = (res) => monetAsset(res)
+const monetAssetController: Controller = (res, req) => monetAsset(res, req)
 
 const config: RawWebsiteConfig = {
   domains: ['monetiseyourwebsite.com', 'www.monetiseyourwebsite.com'],
