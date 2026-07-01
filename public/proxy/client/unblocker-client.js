@@ -40,8 +40,11 @@
   // src/proxy/client/unblocker-client.ts
   var exports_unblocker_client = {};
   __export(exports_unblocker_client, {
+    resolveImageDimensions: () => resolveImageDimensions,
     monetiseAllImages: () => monetiseAllImages,
-    initForWindow: () => initForWindow
+    initForWindow: () => initForWindow,
+    dimensionsForImageElement: () => dimensionsForImageElement,
+    dimensionsForBackgroundElement: () => dimensionsForBackgroundElement
   });
   var banlist = ["posthog"];
   function fixUrl(urlStr, config, loc) {
@@ -221,11 +224,97 @@
   if (typeof window !== "undefined") {
     window.unblockerInit = initForWindow;
   }
+  var FALLBACK_WIDTH = 300;
+  var FALLBACK_HEIGHT = 300;
+  function resolveImageDimensions(input) {
+    const width = input.domWidth > 0 ? input.domWidth : input.naturalWidth > 0 ? input.naturalWidth : FALLBACK_WIDTH;
+    const height = input.domHeight > 0 ? input.domHeight : input.naturalHeight > 0 ? input.naturalHeight : FALLBACK_HEIGHT;
+    return { width, height };
+  }
+  function probeNaturalSize(src) {
+    return new Promise((resolve) => {
+      const probe = new Image;
+      probe.onload = () => {
+        resolve({ naturalWidth: probe.naturalWidth, naturalHeight: probe.naturalHeight });
+      };
+      probe.onerror = () => {
+        resolve({ naturalWidth: 0, naturalHeight: 0 });
+      };
+      probe.src = src;
+    });
+  }
+  function waitForImageLoad(image) {
+    if (image.complete) {
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      image.addEventListener("load", () => resolve(), { once: true });
+      image.addEventListener("error", () => resolve(), { once: true });
+    });
+  }
+  async function naturalDimensionsForImage(image) {
+    let naturalWidth = image.naturalWidth;
+    let naturalHeight = image.naturalHeight;
+    if (naturalWidth > 0 && naturalHeight > 0) {
+      return { naturalWidth, naturalHeight };
+    }
+    const src = image.currentSrc || image.src;
+    if (!src || src.startsWith("/monet")) {
+      return { naturalWidth: 0, naturalHeight: 0 };
+    }
+    await waitForImageLoad(image);
+    naturalWidth = image.naturalWidth;
+    naturalHeight = image.naturalHeight;
+    if (naturalWidth > 0 && naturalHeight > 0) {
+      return { naturalWidth, naturalHeight };
+    }
+    return probeNaturalSize(src);
+  }
+  async function dimensionsForImageElement(image) {
+    const natural = await naturalDimensionsForImage(image);
+    return resolveImageDimensions({
+      domWidth: image.width,
+      domHeight: image.height,
+      naturalWidth: natural.naturalWidth,
+      naturalHeight: natural.naturalHeight
+    });
+  }
+  function parseBackgroundImageUrl(element) {
+    const inline = element.style.backgroundImage;
+    if (inline && inline !== "none") {
+      const match2 = inline.match(/url\(["']?([^"')]+)["']?\)/i);
+      if (match2?.[1]) {
+        return match2[1];
+      }
+    }
+    const computed = window.getComputedStyle(element).backgroundImage;
+    if (!computed || computed === "none") {
+      return null;
+    }
+    const match = computed.match(/url\(["']?([^"')]+)["']?\)/i);
+    return match?.[1] ?? null;
+  }
+  async function dimensionsForBackgroundElement(element) {
+    const natural = { naturalWidth: 0, naturalHeight: 0 };
+    const bgUrl = parseBackgroundImageUrl(element);
+    if (bgUrl && !bgUrl.startsWith("/monet")) {
+      Object.assign(natural, await probeNaturalSize(bgUrl));
+    }
+    return resolveImageDimensions({
+      domWidth: element.clientWidth,
+      domHeight: element.clientHeight,
+      naturalWidth: natural.naturalWidth,
+      naturalHeight: natural.naturalHeight
+    });
+  }
+  function monetUrl(width, height, seed) {
+    return `/monet/${width}w${height}h${seed}`;
+  }
   function monetiseAllImages() {
     let count = 0;
     const images = document.getElementsByTagName("img");
     for (let i = 0;i < images.length; i++) {
-      replaceImage(images[i]);
+      replaceImage(images[i], i);
       count++;
     }
     const backgroundImages = document.querySelectorAll('[style*="background-image"]');
@@ -233,36 +322,51 @@
       replaceBackgroundImage(backgroundImages[i], i);
       count++;
     }
-    console.log(`replaced ${count} images`);
+    console.log(`queued ${count} images for monetisation`);
   }
   function replaceBackgroundImage(element, index) {
-    if (element.getAttribute("monetised")) {
+    if (element.getAttribute("monetised") || element.getAttribute("monetising")) {
       return;
     }
-    element.setAttribute("monetised", "true");
-    const width = element.clientWidth || 300;
-    const height = element.clientHeight || 300;
+    element.setAttribute("monetising", "true");
     const seed = Math.floor(Math.random() * 1e4) + index;
-    const url = `/monet/${width}w${height}h${seed}`;
-    element.style.backgroundImage = `url(${url})`;
+    dimensionsForBackgroundElement(element).then(({ width, height }) => {
+      element.style.backgroundImage = `url(${monetUrl(width, height, seed)})`;
+      element.setAttribute("monetised", "true");
+    }).catch(() => {
+      element.style.backgroundImage = `url(${monetUrl(FALLBACK_WIDTH, FALLBACK_HEIGHT, seed)})`;
+      element.setAttribute("monetised", "true");
+    }).finally(() => {
+      element.removeAttribute("monetising");
+    });
   }
-  function replaceImage(image) {
-    if (image.getAttribute("monetised")) {
+  function replaceImage(image, index) {
+    if (image.getAttribute("monetised") || image.getAttribute("monetising")) {
       return;
     }
-    const url = "/monet";
-    const width = image.width || 300;
-    const height = image.height || 300;
-    const seed = Math.floor(Math.random() * 1e4) + 1;
-    image.setAttribute("monetised", "true");
-    image.src = `${url}/${width}w${height}h${seed}`;
-    image.srcset = `${url}/${width}w${height}h${seed}`;
+    image.setAttribute("monetising", "true");
+    const seed = Math.floor(Math.random() * 1e4) + index + 1;
+    dimensionsForImageElement(image).then(({ width, height }) => {
+      const url = monetUrl(width, height, seed);
+      image.src = url;
+      image.srcset = url;
+      image.setAttribute("monetised", "true");
+    }).catch(() => {
+      const url = monetUrl(FALLBACK_WIDTH, FALLBACK_HEIGHT, seed);
+      image.src = url;
+      image.srcset = url;
+      image.setAttribute("monetised", "true");
+    }).finally(() => {
+      image.removeAttribute("monetising");
+    });
   }
-  document.addEventListener("DOMContentLoaded", () => {
-    console.log("Replace images with paintings by Claude Monet");
-    monetiseAllImages();
-    window.setInterval(monetiseAllImages, 500);
-  });
+  if (typeof document !== "undefined") {
+    document.addEventListener("DOMContentLoaded", () => {
+      console.log("Replace images with paintings by Claude Monet");
+      monetiseAllImages();
+      window.setInterval(monetiseAllImages, 500);
+    });
+  }
   if (typeof window !== "undefined") {
     window.monetiseAllImages = monetiseAllImages;
   }

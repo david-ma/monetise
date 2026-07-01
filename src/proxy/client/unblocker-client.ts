@@ -247,11 +247,128 @@ if (typeof window !== 'undefined') {
 
 // --- Monet image replacement (runs in the proxied page) ---
 
+const FALLBACK_WIDTH = 300
+const FALLBACK_HEIGHT = 300
+
+export type ImageDimensionInput = {
+  domWidth: number
+  domHeight: number
+  naturalWidth: number
+  naturalHeight: number
+}
+
+/** Prefer layout (DOM) size; otherwise intrinsic (natural); otherwise fallback. */
+export function resolveImageDimensions(input: ImageDimensionInput): { width: number; height: number } {
+  const width =
+    input.domWidth > 0 ? input.domWidth : input.naturalWidth > 0 ? input.naturalWidth : FALLBACK_WIDTH
+  const height =
+    input.domHeight > 0 ? input.domHeight : input.naturalHeight > 0 ? input.naturalHeight : FALLBACK_HEIGHT
+  return { width, height }
+}
+
+function probeNaturalSize(src: string): Promise<{ naturalWidth: number; naturalHeight: number }> {
+  return new Promise((resolve) => {
+    const probe = new Image()
+    probe.onload = () => {
+      resolve({ naturalWidth: probe.naturalWidth, naturalHeight: probe.naturalHeight })
+    }
+    probe.onerror = () => {
+      resolve({ naturalWidth: 0, naturalHeight: 0 })
+    }
+    probe.src = src
+  })
+}
+
+function waitForImageLoad(image: HTMLImageElement): Promise<void> {
+  if (image.complete) {
+    return Promise.resolve()
+  }
+  return new Promise((resolve) => {
+    image.addEventListener('load', () => resolve(), { once: true })
+    image.addEventListener('error', () => resolve(), { once: true })
+  })
+}
+
+async function naturalDimensionsForImage(image: HTMLImageElement): Promise<{
+  naturalWidth: number
+  naturalHeight: number
+}> {
+  let naturalWidth = image.naturalWidth
+  let naturalHeight = image.naturalHeight
+  if (naturalWidth > 0 && naturalHeight > 0) {
+    return { naturalWidth, naturalHeight }
+  }
+
+  const src = image.currentSrc || image.src
+  if (!src || src.startsWith('/monet')) {
+    return { naturalWidth: 0, naturalHeight: 0 }
+  }
+
+  await waitForImageLoad(image)
+  naturalWidth = image.naturalWidth
+  naturalHeight = image.naturalHeight
+  if (naturalWidth > 0 && naturalHeight > 0) {
+    return { naturalWidth, naturalHeight }
+  }
+
+  return probeNaturalSize(src)
+}
+
+export async function dimensionsForImageElement(
+  image: HTMLImageElement,
+): Promise<{ width: number; height: number }> {
+  const natural = await naturalDimensionsForImage(image)
+  return resolveImageDimensions({
+    domWidth: image.width,
+    domHeight: image.height,
+    naturalWidth: natural.naturalWidth,
+    naturalHeight: natural.naturalHeight,
+  })
+}
+
+function parseBackgroundImageUrl(element: HTMLElement): string | null {
+  const inline = element.style.backgroundImage
+  if (inline && inline !== 'none') {
+    const match = inline.match(/url\(["']?([^"')]+)["']?\)/i)
+    if (match?.[1]) {
+      return match[1]
+    }
+  }
+
+  const computed = window.getComputedStyle(element).backgroundImage
+  if (!computed || computed === 'none') {
+    return null
+  }
+  const match = computed.match(/url\(["']?([^"')]+)["']?\)/i)
+  return match?.[1] ?? null
+}
+
+export async function dimensionsForBackgroundElement(
+  element: HTMLElement,
+): Promise<{ width: number; height: number }> {
+  const natural = { naturalWidth: 0, naturalHeight: 0 }
+  const bgUrl = parseBackgroundImageUrl(element)
+  if (bgUrl && !bgUrl.startsWith('/monet')) {
+    Object.assign(natural, await probeNaturalSize(bgUrl))
+  }
+
+  return resolveImageDimensions({
+    domWidth: element.clientWidth,
+    domHeight: element.clientHeight,
+    naturalWidth: natural.naturalWidth,
+    naturalHeight: natural.naturalHeight,
+  })
+}
+
+function monetUrl(width: number, height: number, seed: number): string {
+  return `/monet/${width}w${height}h${seed}`
+}
+
 export function monetiseAllImages(): void {
   let count = 0
   const images = document.getElementsByTagName('img')
   for (let i = 0; i < images.length; i++) {
-    replaceImage(images[i])
+    replaceImage(images[i], i)
     count++
   }
 
@@ -260,41 +377,64 @@ export function monetiseAllImages(): void {
     replaceBackgroundImage(backgroundImages[i], i)
     count++
   }
-  console.log(`replaced ${count} images`)
+  console.log(`queued ${count} images for monetisation`)
 }
 
 function replaceBackgroundImage(element: HTMLElement, index: number): void {
-  if (element.getAttribute('monetised')) {
+  if (element.getAttribute('monetised') || element.getAttribute('monetising')) {
     return
   }
 
-  element.setAttribute('monetised', 'true')
-  const width = element.clientWidth || 300
-  const height = element.clientHeight || 300
+  element.setAttribute('monetising', 'true')
   const seed = Math.floor(Math.random() * 10000) + index
-  const url = `/monet/${width}w${height}h${seed}`
-  element.style.backgroundImage = `url(${url})`
+
+  void dimensionsForBackgroundElement(element)
+    .then(({ width, height }) => {
+      element.style.backgroundImage = `url(${monetUrl(width, height, seed)})`
+      element.setAttribute('monetised', 'true')
+    })
+    .catch(() => {
+      element.style.backgroundImage = `url(${monetUrl(FALLBACK_WIDTH, FALLBACK_HEIGHT, seed)})`
+      element.setAttribute('monetised', 'true')
+    })
+    .finally(() => {
+      element.removeAttribute('monetising')
+    })
 }
 
-function replaceImage(image: HTMLImageElement): void {
-  if (image.getAttribute('monetised')) {
+function replaceImage(image: HTMLImageElement, index: number): void {
+  if (image.getAttribute('monetised') || image.getAttribute('monetising')) {
     return
   }
 
-  const url = '/monet'
-  const width = image.width || 300
-  const height = image.height || 300
-  const seed = Math.floor(Math.random() * 10000) + 1
-  image.setAttribute('monetised', 'true')
-  image.src = `${url}/${width}w${height}h${seed}`
-  image.srcset = `${url}/${width}w${height}h${seed}`
+  image.setAttribute('monetising', 'true')
+  const seed = Math.floor(Math.random() * 10000) + index + 1
+
+  void dimensionsForImageElement(image)
+    .then(({ width, height }) => {
+      const url = monetUrl(width, height, seed)
+      image.src = url
+      image.srcset = url
+      image.setAttribute('monetised', 'true')
+    })
+    .catch(() => {
+      const url = monetUrl(FALLBACK_WIDTH, FALLBACK_HEIGHT, seed)
+      image.src = url
+      image.srcset = url
+      image.setAttribute('monetised', 'true')
+    })
+    .finally(() => {
+      image.removeAttribute('monetising')
+    })
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  console.log('Replace images with paintings by Claude Monet')
-  monetiseAllImages()
-  window.setInterval(monetiseAllImages, 500)
-})
+if (typeof document !== 'undefined') {
+  document.addEventListener('DOMContentLoaded', () => {
+    console.log('Replace images with paintings by Claude Monet')
+    monetiseAllImages()
+    window.setInterval(monetiseAllImages, 500)
+  })
+}
 
 if (typeof window !== 'undefined') {
   window.monetiseAllImages = monetiseAllImages
