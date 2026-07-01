@@ -17,7 +17,7 @@ header .blur_background {
   height: 500px;
   width: 100%;
   position: absolute;
-  background: url("/images/unsplash.jpg");
+  background: url("https://photos.smugmug.com/Thalia/n-rXXjjD/My-Smug-Album/i-zqdQpjF/0/M87ZkHC6fHsWtjvgfH6jFDMm7BBWTWDxmNffwMfzt/L/unsplash-L.jpg");
   background-size: cover;
   background-position: 50% 60%;
   /* Depending on your photo, you might need to blur the background.
