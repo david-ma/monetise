@@ -5,10 +5,11 @@ import {
   stopTestServer,
   waitForServerHttp,
 } from 'thalia/testing'
+import { describeDatabaseOnline } from '../helpers'
 
 const PROJECT = 'monetise'
 
-describe('monetise HTTP routes', () => {
+describeDatabaseOnline('monetise HTTP routes', () => {
   let port = 0
 
   beforeAll(async () => {
