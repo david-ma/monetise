@@ -1,8 +1,7 @@
-import { Options, Sequelize, Transaction } from 'sequelize'
-import { dbFactory } from '../models'
-import { seqObject } from 'thalia'
+import type { Options } from 'sequelize'
+import { dbFactory, type MonetiseDb } from '../models'
 
-let seqOptions: Options = {
+const seqOptions: Options = {
   dialect: 'postgres',
   database: 'monetise',
   username: 'monetise',
@@ -23,12 +22,32 @@ if (process.env.NODE_ENV === 'docker') {
   seqOptions.port = 5432
 }
 
-const seq: seqObject = dbFactory(seqOptions)
+const seq: MonetiseDb = dbFactory(seqOptions)
 
-seq.sequelize.sync({
-  // force: true,
-  // alter: true,
-})
+let dbReady = false
 
-exports.seqOptions = seqOptions
-exports.seq = seq
+export async function initDb(): Promise<boolean> {
+  try {
+    await seq.sequelize.authenticate()
+    await seq.sequelize.sync({
+      // force: true,
+      // alter: true,
+    })
+    dbReady = true
+    console.log('Postgres connected for monetise')
+    return true
+  } catch (error) {
+    dbReady = false
+    console.warn(
+      'Postgres unavailable — visitor tracking disabled. Start with: docker compose up db',
+      error instanceof Error ? error.message : error,
+    )
+    return false
+  }
+}
+
+export function isDbReady(): boolean {
+  return dbReady
+}
+
+export { seqOptions, seq }

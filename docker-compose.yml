@@ -7,7 +7,9 @@ services:
     environment:
       - NODE_ENV=docker
       - NODE_OPTIONS=--max_http_header_size=65536
-    restart: always
+    volumes:
+      - ./data:/app/data
+    # restart: always
     depends_on:
       - db
     links:
@@ -22,10 +24,10 @@ services:
     ports:
       - '5233:5432'
     environment:
-      # PGUSER: 'postgres'
       POSTGRES_USER: 'monetise'
       POSTGRES_PASSWORD: 'monetise_password'
-    restart: always
+      POSTGRES_DB: 'monetise'
+    # restart: always
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U monetise"]
       interval: 1m30s

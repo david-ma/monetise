@@ -1,16 +1,32 @@
-const unblocker = require('unblocker')
-import { Thalia, setHandlebarsContent } from 'thalia'
-import maxmind, { CityResponse } from 'maxmind'
+import { createRequire as nodeCreateRequire } from 'module'
+import fs from 'fs'
+import path from 'path'
+import { fileURLToPath } from 'url'
+import { Transform } from 'stream'
+import type { IncomingMessage, ServerResponse } from 'http'
+
+import type { RawWebsiteConfig, Controller, Website } from 'thalia'
+import type { RequestInfo } from 'thalia/server'
+import maxmind, { type CityResponse } from 'maxmind'
 import Handlebars from 'handlebars'
 
 import { downloadCitiesData } from './mmdb'
+import { seq, initDb, isDbReady } from './db_bootstrap'
+
+const nodeRequire = nodeCreateRequire(import.meta.url)
+const unblocker = nodeRequire('unblocker')
+
+const configDir = path.dirname(fileURLToPath(import.meta.url))
+const rootDir = path.join(configDir, '..')
+const srcDir = path.join(rootDir, 'src')
+
+initDb()
+
 downloadCitiesData().then((message) => {
   console.log(message)
 })
 
-var Transform = require('stream').Transform
-
-var unblockerConfig = {
+const unblockerConfig = {
   host: 'monetiseyourwebsite.com',
   prefix: '/proxy/',
   responseMiddleware: [googleAnalyticsMiddleware],
@@ -18,15 +34,42 @@ var unblockerConfig = {
 }
 const handleRequest = unblocker(unblockerConfig)
 
-const botIpAddresses = {}
+const botIpAddresses: Record<string, number> = {}
 
-async function siteVisit(controller) {
-  let url = controller.request.url
+function readView(name: string): string {
+  return fs.readFileSync(path.join(srcDir, `${name}.hbs`), 'utf8')
+}
 
-  if (controller.query.goto) {
-    url = controller.query.goto
+function serveFile(res: ServerResponse, absolutePath: string): void {
+  const ext = path.extname(absolutePath).toLowerCase()
+  const contentTypes: Record<string, string> = {
+    '.html': 'text/html; charset=utf-8',
+    '.js': 'text/javascript; charset=utf-8',
+    '.css': 'text/css; charset=utf-8',
+  }
+  res.setHeader('Content-Type', contentTypes[ext] ?? 'application/octet-stream')
+  fs.createReadStream(absolutePath).pipe(res)
+}
+
+function setVisitorCookie(res: ServerResponse, ip: string): void {
+  res.setHeader('Set-Cookie', `cookieName=${ip}; Path=/`)
+}
+
+async function siteVisit(
+  req: IncomingMessage,
+  ip: string,
+  userAgent: string | undefined,
+): Promise<void> {
+  if (!isDbReady()) return
+
+  let url = req.url ?? ''
+
+  const query = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`).searchParams
+  const goto = query.get('goto')
+  if (goto) {
+    url = goto
   } else if (url.indexOf('/proxy/') > -1) {
-    url = url.split('/proxy/').pop()
+    url = url.split('/proxy/').pop() ?? url
 
     try {
       if (url.indexOf('http') !== 0) {
@@ -34,11 +77,13 @@ async function siteVisit(controller) {
       }
       const urlObject = new URL(url)
       url = urlObject.origin
-    } catch (e) {}
+    } catch {
+      /* keep url as-is */
+    }
   }
 
   return Promise.all([
-    controller.db.Site.findOrCreate({
+    seq.Site.findOrCreate({
       where: { url },
       defaults: {
         title: 'title',
@@ -46,12 +91,11 @@ async function siteVisit(controller) {
         keywords: 'keywords',
       },
     }),
-    controller.db.Visitor.findOrCreate({
-      where: { ip: controller.ip },
-      defaults: { userAgent: controller.request.headers['user-agent'] },
+    seq.Visitor.findOrCreate({
+      where: { ip },
+      defaults: { userAgent: userAgent ?? '' },
     }),
   ]).then(([site, visitor]) => {
-    // check if the visitor has already visited the site
     visitor[0].getSites().then((sites) => {
       if (!sites.find((s) => s.id === site[0].id)) {
         visitor[0].addSite(site[0])
@@ -62,201 +106,217 @@ async function siteVisit(controller) {
   })
 }
 
-let config: Thalia.WebsiteConfig = {
-  controllers: {
-    '': function (controller) {
-      controller.res.setCookie({ cookieName: controller.ip })
+const homepage: Controller = (res, req, _website, requestInfo) => {
+  setVisitorCookie(res, requestInfo.ip)
 
-      // TODO: Should probably be reset after some time..?
-      // This would break a class of students visiting the website
-      if (botIpAddresses[controller.ip] > 10) {
-        // send to robots.txt
-        controller.response.writeHead(302, {
-          Location: '/robots.txt',
-        })
-      } else {
-        if (controller.query.goto) {
-          const sections = controller.query.goto.split('/proxy/')
-          let url = sections.pop()
-          if (url.indexOf('http') !== 0) {
-            // Assume https, if no protocol provided?
-            url = `https://${url}`
-          }
+  if ((botIpAddresses[requestInfo.ip] ?? 0) > 10) {
+    res.writeHead(302, { Location: '/robots.txt' })
+    res.end()
+    return
+  }
 
-          console.log('IP', controller.ip)
+  if (requestInfo.query.goto) {
+    const sections = requestInfo.query.goto.split('/proxy/')
+    let url = sections.pop() ?? ''
+    if (url.indexOf('http') !== 0) {
+      url = `https://${url}`
+    }
 
-          siteVisit(controller).then(() => {
-            controller.response.writeHead(302, {
-              Location: `/proxy/${url}`,
-            })
+    console.log('IP', requestInfo.ip)
 
-            controller.response.end()
-          })
-        } else {
-          siteVisit(controller).then(() => {
-            controller.routeFile(`${__dirname}/../public/index.html`)
-          })
-        }
-      }
-    },
-    proxy: function (controller) {
-      let url = controller.request.url
-      const sections = url.split('/proxy/')
-      url = controller.request.url = `${sections[0]}/proxy/${sections.pop()}`
-      var base = url
-      try {
-        base = url.split('//')[1]
-        base = base.split('/')[0]
-        base = base.split(':')[0]
-      } catch (e) {
-        controller.response.end("500 Error, couldn't read target host")
-        return
-      }
-
-      const ipAddressRegex = /(\d+\.?){4}/
-      // TODO: Filter out IPv6 addresses
-      // const v6IpAddressRegex = /(\w+:?){8}/
-
-      if (ipAddressRegex.test(base)) {
-        console.log('IP Address found!', base)
-        console.log('Full URL', url)
-        controller.response.end('401 Error, Not allowed to visit IP addresses')
-        return
-      }
-
-      const cookies = controller.cookies
-
-      if (url.indexOf('/proxy/client/') > -1) {
-        // The client script /proxy/client/unblocker-client.js needs to be served
-        // Also, I think it will try to connect via websockets
-        controller.routeFile(
-          `${__dirname}/../public/proxy/client/unblocker-client.js`
-        )
-        // handleRequest(controller.request, controller.response)
-      } else if (sections.length > 2) {
-        controller.response.writeHead(302, {
-          Location: url,
-        })
-        controller.response.end()
-        return
-      } else if (
-        !cookies ||
-        !cookies.cookieName ||
-        cookies.cookieName !== controller.ip
-      ) {
-        botIpAddresses[controller.ip] ? botIpAddresses[controller.ip]++ : 1
-
-        controller.response.writeHead(303, {
-          Location: `//${controller.request.headers.host}/?goto=${url}`,
-        })
-        controller.response.end()
-        return
-      } else if (
-        // Check if it's an image
-        controller.request.url.match(
-          /\.(jpeg|jpg|gif|png|webp|svg|bmp|avif)(\?.*)?$$/i
-        )
-      ) {
-        monetAsset(controller)
-      } else {
-        siteVisit(controller).then(() => {
-          handleRequest(controller.request, controller.response)
-        })
-      }
-    },
-    _next: monetAsset,
-    assets: monetAsset,
-    monet: monetAsset,
-    visitors: function (controller) {
-      Promise.all([
-        controller.db.Visitor.findAll(),
-        maxmind.open<CityResponse>(`${__dirname}/../data/city.mmdb`),
-        new Promise(controller.readAllViews),
-      ]).then(
-        ([visitors, lookup, views]) => {
-          Promise.all(
-            visitors.map((visitor) => {
-              const blob = lookup.get(visitor.ip)
-
-              return visitor.getSites().then((sites) => {
-                const createdAt: Date = visitor.createdAt
-                const date = createdAt.toLocaleString()
-
-                return {
-                  ...visitor.dataValues,
-                  city: blob ? blob.city.names.en : 'Unknown',
-                  country: blob ? blob.country.names.en : 'Unknown',
-                  longitude: blob ? blob.location.longitude : 'Unknown',
-                  latitude: blob ? blob.location.latitude : 'Unknown',
-                  date,
-                  sites,
-                  count: sites.length,
-                }
-              })
-            })
-          ).then(
-            (data) => {
-              data = data.sort((a, b) => b.count - a.count)
-
-              const template = Handlebars.compile(views.visitors)
-              controller.response.end(template({ visitors: data }))
-            },
-            (error) => {
-              console.error(error)
-              controller.response.end('Error - Could not fetch visitors')
-            }
-          )
-        },
-        (error) => {
-          console.error(error)
-          controller.response.end(
-            "Error - We probably didn't download the city IP lookup database."
-          )
-        }
-      )
-    },
-    geoip: function (controller) {
-      maxmind.open<CityResponse>(`${__dirname}/../data/city.mmdb`).then(
-        (lookup) => {
-          const ip = controller.query.ip || controller.ip
-          const blob = lookup.get(ip)
-
-          controller.response.setHeader('Content-Type', 'application/json')
-          controller.response.setHeader('Access-Control-Allow-Origin', '*')
-
-          controller.response.end(JSON.stringify(blob))
-        },
-        (error) => {
-          console.error(error)
-          controller.response.end(
-            "Error - We probably didn't download the city IP lookup database."
-          )
-        }
-      )
-    },
-  },
+    siteVisit(req, requestInfo.ip, req.headers['user-agent'])
+      .catch((error) => console.error('siteVisit failed:', error))
+      .then(() => {
+      res.writeHead(302, { Location: `/proxy/${url}` })
+      res.end()
+    })
+  } else {
+    siteVisit(req, requestInfo.ip, req.headers['user-agent'])
+      .catch((error) => console.error('siteVisit failed:', error))
+      .then(() => {
+      serveFile(res, path.join(rootDir, 'public', 'index.html'))
+    })
+  }
 }
 
-function monetAsset(controller: Thalia.Controller) {
-  var image = Math.floor(Math.random() * 67)
+const proxy: Controller = (res, req, _website, requestInfo) => {
+  let url = req.url ?? ''
+  const sections = url.split('/proxy/')
+  url = req.url = `${sections[0]}/proxy/${sections.pop()}`
 
-  // serve a random image by Monet
-  controller.response.writeHead(302, {
-    Location: `/images/assets/${image}.jpg`,
-  })
-  controller.response.end()
+  let base: string
+  try {
+    base = url.split('//')[1] ?? ''
+    base = base.split('/')[0] ?? ''
+    base = base.split(':')[0] ?? ''
+  } catch {
+    res.end("500 Error, couldn't read target host")
+    return
+  }
+
+  const ipAddressRegex = /(\d+\.?){4}/
+
+  if (ipAddressRegex.test(base)) {
+    console.log('IP Address found!', base)
+    console.log('Full URL', url)
+    res.end('401 Error, Not allowed to visit IP addresses')
+    return
+  }
+
+  const cookies = requestInfo.cookies
+
+  if (url.indexOf('/proxy/client/') > -1) {
+    serveFile(res, path.join(rootDir, 'public', 'proxy', 'client', 'unblocker-client.js'))
+  } else if (sections.length > 2) {
+    res.writeHead(302, { Location: url })
+    res.end()
+  } else if (!cookies?.cookieName || cookies.cookieName !== requestInfo.ip) {
+    botIpAddresses[requestInfo.ip] = (botIpAddresses[requestInfo.ip] ?? 0) + 1
+
+    res.writeHead(303, {
+      Location: `//${req.headers.host}/?goto=${encodeURIComponent(url)}`,
+    })
+    res.end()
+  } else if (req.url?.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp|avif)(\?.*)?$/i)) {
+    monetAsset(res)
+  } else {
+    siteVisit(req, requestInfo.ip, req.headers['user-agent'])
+      .catch((error) => console.error('siteVisit failed:', error))
+      .then(() => {
+      handleRequest(req, res)
+    })
+  }
+}
+
+const websites: Controller = (res, _req, website, _requestInfo) => {
+  if (!isDbReady()) {
+    res.end('Database unavailable')
+    return
+  }
+
+  Promise.all([seq.Site.findAll()])
+    .then(
+      ([sites]) => {
+        const domains: Record<string, unknown> = {}
+
+        sites.forEach((site) => {
+          const domain = site.url.match(/:\/+(.*?)\//)
+          if (!domain) {
+            console.log(site.url)
+          }
+        })
+
+        website.handlebars.registerPartial('content', readView('websites'))
+        const template = website.handlebars.compile(readView('base'))
+        res.end(template({ sites, domains }))
+      },
+      (error) => {
+        console.error(error)
+        res.end('Error - Could not fetch websites')
+      },
+    )
+}
+
+const visitors: Controller = (res, _req, _website, _requestInfo) => {
+  if (!isDbReady()) {
+    res.end('Database unavailable')
+    return
+  }
+
+  Promise.all([
+    seq.Visitor.findAll(),
+    maxmind.open<CityResponse>(path.join(rootDir, 'data', 'city.mmdb')),
+  ]).then(
+    ([visitors, lookup]) => {
+      Promise.all(
+        visitors.map((visitor) => {
+          const blob = lookup.get(visitor.ip)
+
+          return visitor.getSites().then((sites) => {
+            const createdAt: Date = visitor.createdAt
+            const date = createdAt.toLocaleString()
+
+            return {
+              ...visitor.dataValues,
+              city: blob ? blob.city?.names?.en : 'Unknown',
+              country: blob ? blob.country?.names?.en : 'Unknown',
+              longitude: blob ? blob.location?.longitude : 'Unknown',
+              latitude: blob ? blob.location?.latitude : 'Unknown',
+              date,
+              sites,
+              count: sites.length,
+            }
+          })
+        }),
+      ).then(
+        (data) => {
+          const sorted = data.sort((a, b) => b.count - a.count)
+          const template = Handlebars.compile(readView('visitors'))
+          res.end(template({ visitors: sorted }))
+        },
+        (error) => {
+          console.error(error)
+          res.end('Error - Could not fetch visitors')
+        },
+      )
+    },
+    (error) => {
+      console.error(error)
+      res.end("Error - We probably didn't download the city IP lookup database.")
+    },
+  )
+}
+
+const geoip: Controller = (res, _req, _website, requestInfo) => {
+  maxmind.open<CityResponse>(path.join(rootDir, 'data', 'city.mmdb')).then(
+    (lookup) => {
+      const ip = requestInfo.query.ip || requestInfo.ip
+      const blob = lookup.get(ip)
+
+      res.setHeader('Content-Type', 'application/json')
+      res.setHeader('Access-Control-Allow-Origin', '*')
+      res.end(JSON.stringify(blob))
+    },
+    (error) => {
+      console.error(error)
+      res.end("Error - We probably didn't download the city IP lookup database.")
+    },
+  )
+}
+
+function monetAsset(res: ServerResponse): void {
+  const image = Math.floor(Math.random() * 67)
+  res.writeHead(302, { Location: `/images/assets/${image}.jpg` })
+  res.end()
+}
+
+const monetAssetController: Controller = (res) => monetAsset(res)
+
+const config: RawWebsiteConfig = {
+  domains: ['monetiseyourwebsite.com', 'www.monetiseyourwebsite.com'],
+  controllers: {
+    '': homepage,
+    homepage,
+    proxy,
+    _next: monetAssetController,
+    assets: monetAssetController,
+    monet: monetAssetController,
+    websites,
+    visitors,
+    geoip,
+  },
 }
 
 export { config }
 
-var google_analytics_id = process.env.GA_ID || 'UA-49861162-2'
+const google_analytics_id = process.env.GA_ID || 'UA-49861162-2'
 
-function addGa(html) {
+function addGa(html: string): string {
   if (google_analytics_id) {
-    var ga = [
+    const ga = [
       '<script type="text/javascript">',
       'var _gaq = []; // overwrite the existing one, if any',
-      "_gaq.push(['_setAccount', '" + google_analytics_id + "']);",
+      `_gaq.push(['_setAccount', '${google_analytics_id}']);`,
       "_gaq.push(['_trackPageview']);",
       '(function() {',
       "  var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;",
@@ -270,17 +330,16 @@ function addGa(html) {
   return html
 }
 
-function googleAnalyticsMiddleware(data) {
+function googleAnalyticsMiddleware(data: { contentType?: string; stream: NodeJS.ReadWriteStream }) {
   if (data.contentType == 'text/html') {
-    // https://nodejs.org/api/stream.html#stream_transform
     data.stream = data.stream.pipe(
       new Transform({
         decodeStrings: false,
-        transform: function (chunk, encoding, next) {
+        transform(chunk, _encoding, next) {
           this.push(addGa(chunk.toString()))
           next()
         },
-      })
+      }),
     )
   }
 }

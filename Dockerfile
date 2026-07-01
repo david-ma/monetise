@@ -1,18 +1,16 @@
-FROM frostickle/thalia:1.0.4 as base
+FROM oven/bun:1 AS base
 
-USER root
+WORKDIR /app
 
-RUN mkdir -p /usr/app/Thalia/websites/monetise/data
-COPY package.json /usr/app/Thalia/websites/monetise
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile
 
-WORKDIR /usr/app/Thalia/websites/monetise
-RUN pnpm install
-COPY . /usr/app/Thalia/websites/monetise
+COPY . .
 
-# RUN unlink /usr/app/Thalia/websites/monetise/node_modules/thalia
-RUN ln -s /usr/app/Thalia /usr/app/Thalia/websites/monetise/node_modules/thalia
+# GeoIP database and Monet image assets are expected under data/
+# Postgres is a separate service — set NODE_ENV=docker and link host `db`.
+ENV NODE_ENV=production
+EXPOSE 1337
 
-WORKDIR /usr/app/Thalia
-RUN sh build.sh monetise
-
-CMD ["/usr/app/Thalia/start.sh", "monetise"]
+# TODO: replace with frostickle/thalia:1.1.0 once published to Docker Hub
+CMD ["bun", "thalia"]

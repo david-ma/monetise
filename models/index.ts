@@ -7,6 +7,7 @@ export interface VisitorAttributes {
 export interface VisitorModel
   extends Model<VisitorAttributes>,
     VisitorAttributes {
+  createdAt: Date
   addSite(site: SiteModel): void
   getSites(): Promise<SiteModel[]>
   countSites(): Promise<number>
@@ -126,12 +127,61 @@ export function PaintingFactory(sequelize: Sequelize): PaintingStatic {
   )
 }
 
-import { seqObject } from 'thalia'
-export function dbFactory(seqOptions: Options): seqObject {
+export interface MonetiseDb {
+  sequelize: Sequelize
+  Site: SiteStatic
+  Visitor: VisitorStatic
+  Painting: PaintingStatic
+}
+
+// export interface SiteVisitorAttributes {
+//   SiteId: number
+//   VisitorId: number
+//   visits: number
+// }
+
+// export class SiteVisitor extends Model<SiteVisitorAttributes> {
+//   public SiteId!: number
+//   public VisitorId!: number
+//   public visits!: number
+// }
+
+// export function SiteVisitorFactory(sequelize: Sequelize) {
+//   return SiteVisitor.init(
+//     {
+//       visits: {
+//         type: DataTypes.INTEGER,
+//         defaultValue: 1,
+//       },
+//       SiteId: {
+//         type: DataTypes.INTEGER,
+//         references: {
+//           model: Site,
+//           key: 'id',
+//         },
+//       },
+//       VisitorId: {
+//         type: DataTypes.INTEGER,
+//         references: {
+//           model: Visitor,
+//           key: 'id',
+//         },
+//       },
+//     },
+//     {
+//       sequelize,
+//       tableName: 'SiteVisitorTest',
+//     }
+//   )
+// }
+
+export function dbFactory(seqOptions: Options): MonetiseDb {
   const sequelize = new Sequelize(seqOptions)
   const Site = SiteFactory(sequelize)
   const Visitor = VisitorFactory(sequelize)
   const Painting = PaintingFactory(sequelize)
+  // const SiteVisitor = SiteVisitorFactory(sequelize)
+
   Site.belongsToMany(Visitor, { through: 'SiteVisitor' })
   Visitor.belongsToMany(Site, { through: 'SiteVisitor' })
 

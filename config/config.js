@@ -146,6 +146,28 @@ let config = {
         _next: monetAsset,
         assets: monetAsset,
         monet: monetAsset,
+        websites: function (controller) {
+            Promise.all([
+                controller.db.Site.findAll(),
+                new Promise(controller.readAllViews),
+            ]).then(([sites, views]) => {
+                const domains = {};
+                sites.forEach((site) => {
+                    const url = site.url.replace(/(^\w+:|^)\/\//, '');
+                    const domain = site.url.match(/:\/+(.*?)\//);
+                    if (!domain) {
+                        console.log(site.url);
+                    }
+                });
+                (0, thalia_1.setHandlebarsContent)(views.websites, controller.handlebars).then(() => {
+                    const template = controller.handlebars.compile(views.base);
+                    controller.response.end(template({ sites, domains }));
+                });
+            }, (error) => {
+                console.error(error);
+                controller.response.end('Error - Could not fetch websites');
+            });
+        },
         visitors: function (controller) {
             Promise.all([
                 controller.db.Visitor.findAll(),
