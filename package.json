@@ -11,7 +11,8 @@
     "test": "bun test",
     "typecheck": "bunx tsc --noEmit -p tsconfig.json",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "drizzle-kit migrate",
+    "smugmug:fetch": "bun scripts/analyse_smugmug.ts"
   },
   "keywords": [],
   "author": "",
