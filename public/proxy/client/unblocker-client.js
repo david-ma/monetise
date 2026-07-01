@@ -340,6 +340,14 @@
       element.removeAttribute("monetising");
     });
   }
+  function applyMonetImageLayout(image, width, height, url) {
+    image.style.width = `${width}px`;
+    image.style.height = `${height}px`;
+    image.style.objectFit = "cover";
+    image.src = url;
+    image.srcset = url;
+    image.setAttribute("monetised", "true");
+  }
   function replaceImage(image, index) {
     if (image.getAttribute("monetised") || image.getAttribute("monetising")) {
       return;
@@ -347,15 +355,9 @@
     image.setAttribute("monetising", "true");
     const seed = Math.floor(Math.random() * 1e4) + index + 1;
     dimensionsForImageElement(image).then(({ width, height }) => {
-      const url = monetUrl(width, height, seed);
-      image.src = url;
-      image.srcset = url;
-      image.setAttribute("monetised", "true");
+      applyMonetImageLayout(image, width, height, monetUrl(width, height, seed));
     }).catch(() => {
-      const url = monetUrl(FALLBACK_WIDTH, FALLBACK_HEIGHT, seed);
-      image.src = url;
-      image.srcset = url;
-      image.setAttribute("monetised", "true");
+      applyMonetImageLayout(image, FALLBACK_WIDTH, FALLBACK_HEIGHT, monetUrl(FALLBACK_WIDTH, FALLBACK_HEIGHT, seed));
     }).finally(() => {
       image.removeAttribute("monetising");
     });

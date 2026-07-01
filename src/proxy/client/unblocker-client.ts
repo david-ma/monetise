@@ -402,6 +402,20 @@ function replaceBackgroundImage(element: HTMLElement, index: number): void {
     })
 }
 
+function applyMonetImageLayout(
+  image: HTMLImageElement,
+  width: number,
+  height: number,
+  url: string,
+): void {
+  image.style.width = `${width}px`
+  image.style.height = `${height}px`
+  image.style.objectFit = 'cover'
+  image.src = url
+  image.srcset = url
+  image.setAttribute('monetised', 'true')
+}
+
 function replaceImage(image: HTMLImageElement, index: number): void {
   if (image.getAttribute('monetised') || image.getAttribute('monetising')) {
     return
@@ -412,16 +426,15 @@ function replaceImage(image: HTMLImageElement, index: number): void {
 
   void dimensionsForImageElement(image)
     .then(({ width, height }) => {
-      const url = monetUrl(width, height, seed)
-      image.src = url
-      image.srcset = url
-      image.setAttribute('monetised', 'true')
+      applyMonetImageLayout(image, width, height, monetUrl(width, height, seed))
     })
     .catch(() => {
-      const url = monetUrl(FALLBACK_WIDTH, FALLBACK_HEIGHT, seed)
-      image.src = url
-      image.srcset = url
-      image.setAttribute('monetised', 'true')
+      applyMonetImageLayout(
+        image,
+        FALLBACK_WIDTH,
+        FALLBACK_HEIGHT,
+        monetUrl(FALLBACK_WIDTH, FALLBACK_HEIGHT, seed),
+      )
     })
     .finally(() => {
       image.removeAttribute('monetising')
