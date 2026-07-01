@@ -5,7 +5,8 @@ FROM frostickle/thalia:1.1.2
 USER root
 RUN apt-get update \
   && apt-get install -y --no-install-recommends git \
-  && rm -rf /var/lib/apt/lists/*
+  && rm -rf /var/lib/apt/lists/* \
+  && git config --system --add safe.directory /usr/app/Thalia
 
 COPY --chown=bun:bun . /usr/app/Thalia/websites/monetise
 
