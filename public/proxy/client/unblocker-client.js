@@ -1,363 +1,269 @@
-(function (global) {
-  "use strict";
+(() => {
+  var __defProp = Object.defineProperty;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  function __accessProp(key) {
+    return this[key];
+  }
+  var __toCommonJS = (from) => {
+    var entry = (__moduleCache ??= new WeakMap).get(from), desc;
+    if (entry)
+      return entry;
+    entry = __defProp({}, "__esModule", { value: true });
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (var key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(entry, key))
+          __defProp(entry, key, {
+            get: __accessProp.bind(from, key),
+            enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable
+          });
+    }
+    __moduleCache.set(from, entry);
+    return entry;
+  };
+  var __moduleCache;
+  var __returnValue = (v) => v;
+  function __exportSetter(name, newValue) {
+    this[name] = __returnValue.bind(null, newValue);
+  }
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, {
+        get: all[name],
+        enumerable: true,
+        configurable: true,
+        set: __exportSetter.bind(all, name)
+      });
+  };
 
-  // todo:
-  // - postMessage
-  // - open
-  // - DOM Mutation Observer
-  //   - href
-  //   - src
-  //   - srcset
-  //   - style (this could get tricky...)
-  //   - poster (on <video> elements)
-  //   - perhaps some/all of this could be shared by the server-side url-rewriter
-  // - split each part into separate files (?)
-  // - wrap other JS and provide proxies to fix writes to window.location and document.cookie
-  //   - will require updating contentTypes.html.includes(data.contentType) to include js
-  //   - that, in turn will require decompressing js....
-  // call() and apply() on `this || original_thing`
-  // prevent a failure in one initializer from stopping subsequent initializers
-
-  const banlist = [ 'posthog' ]
-
-  function fixUrl(urlStr, config, location) {
-    // Silence this debugging. Perhaps put it behind a dev flag?
-    // console.log("Fixing URL", {
-    //   urlStr,
-    //   config,
-    //   location,
-    // });
-
+  // src/proxy/client/unblocker-client.ts
+  var exports_unblocker_client = {};
+  __export(exports_unblocker_client, {
+    monetiseAllImages: () => monetiseAllImages,
+    initForWindow: () => initForWindow
+  });
+  var banlist = ["posthog"];
+  function fixUrl(urlStr, config, loc) {
     if (!urlStr) {
       console.error("No urlStr provided", urlStr);
       return;
     }
-
     if (typeof urlStr !== "string" || typeof urlStr.includes !== "function") {
       console.error("urlStr is not a string", urlStr);
       return;
     }
-
-    if(banlist.some(banned => urlStr.includes(banned))) {
-      console.log("Banned URL:", urlStr)
+    if (banlist.some((banned) => urlStr.includes(banned))) {
+      console.log("Banned URL:", urlStr);
       return;
     }
-
-    var currentRemoteHref;
-    if (location.pathname.substr(0, config.prefix.length) === config.prefix) {
-      currentRemoteHref =
-        location.pathname.substr(config.prefix.length) +
-        location.search +
-        location.hash;
+    let currentRemoteHref;
+    if (loc.pathname.substr(0, config.prefix.length) === config.prefix) {
+      currentRemoteHref = loc.pathname.substr(config.prefix.length) + loc.search + loc.hash;
     } else {
-      // in case sites (such as youtube) manage to bypass our history wrapper
-      currentRemoteHref = config.url;
+      currentRemoteHref = String(config.url);
     }
-
-    // check if it's already proxied (root-relative)
-    if (urlStr.substr && urlStr.substr(0, config.prefix.length) === config.prefix) {
+    if (urlStr.substr(0, config.prefix.length) === config.prefix) {
       return urlStr;
     }
-
-    var url = new URL(urlStr, currentRemoteHref);
-
-    // check if it's already proxied (absolute)
-    if (
-      url.origin === location.origin &&
-      url.pathname.substr(0, config.prefix.length) === config.prefix
-    ) {
+    const url = new URL(urlStr, currentRemoteHref);
+    if (url.origin === loc.origin && url.pathname.substr(0, config.prefix.length) === config.prefix) {
       return urlStr;
     }
-
-    // don't break data: urls, about:blank, etc
-    // todo: do modify ws: and wss: protocols
     if (url.protocol !== "http:" && url.protocol !== "https:") {
       return urlStr;
     }
-
-    // sometimes websites are tricky and use the current host or hostname + a relative url
-    // check hostname (ignoring port)
-    if (url.hostname === location.hostname) {
-      var currentRemoteUrl = new URL(currentRemoteHref);
-      // set host (including port)
+    if (url.hostname === loc.hostname) {
+      const currentRemoteUrl = new URL(currentRemoteHref);
       url.host = currentRemoteUrl.host;
-      // also keep the remote site's current protocol
       url.protocol = currentRemoteUrl.protocol;
-      // todo: handle websocket protocols
     }
     return config.prefix + url.href;
   }
-
-  function initXMLHttpRequest(config, window) {
-    if (!window.XMLHttpRequest) return;
-    var _XMLHttpRequest = window.XMLHttpRequest;
-
-    window.XMLHttpRequest = function (opts) {
-      var xhr = new _XMLHttpRequest(opts);
-      var _open = xhr.open;
-      xhr.open = function () {
-        var args = Array.prototype.slice.call(arguments);
-        args[1] = fixUrl(args[1], config, location);
-        return _open.apply(xhr, args);
+  function initXMLHttpRequest(config, win) {
+    if (!win.XMLHttpRequest)
+      return;
+    const XMLHttpRequestCtor = win.XMLHttpRequest;
+    win.XMLHttpRequest = function() {
+      const xhr = new XMLHttpRequestCtor;
+      const open = xhr.open.bind(xhr);
+      xhr.open = function(method, url, async, username, password) {
+        const fixed = fixUrl(String(url), config, win.location);
+        return open(method, fixed ?? String(url), async ?? true, username, password);
       };
       return xhr;
     };
   }
-
-  function initFetch(config, window) {
-    if (!window.fetch) return;
-    var _fetch = window.fetch;
-
-    window.fetch = function (resource, init) {
-      if (resource.url) {
-        resource.url = fixUrl(resource.url, config, location);
+  function initFetch(config, win) {
+    if (!win.fetch)
+      return;
+    const fetchImpl = win.fetch.bind(win);
+    win.fetch = function(resource, init) {
+      if (resource instanceof Request) {
+        const fixed = fixUrl(resource.url, config, win.location);
+        if (fixed && fixed !== resource.url) {
+          resource = new Request(fixed, resource);
+        }
       } else {
-        resource = fixUrl(resource.toString(), config, location);
+        resource = fixUrl(String(resource), config, win.location) ?? String(resource);
       }
-      return _fetch(resource, init);
+      return fetchImpl(resource, init);
     };
   }
-
-  // this prevents an initial request to the wrong (unproxied) URL
-  // it also is important for <img> and <audio> elements that are only created in memory, and never added to the DOM
-  function initCreateElement(config, window) {
-    if (!window.document || !window.document.createElement) return;
-    var _createElement = window.document.createElement;
-
-    window.document.createElement = function (tagName, options) {
+  function initCreateElement(config, win) {
+    if (!win.document?.createElement)
+      return;
+    const createElement = win.document.createElement.bind(win.document);
+    win.document.createElement = function(tagName, options) {
       if (tagName.toLowerCase() === "iframe") {
-        initAppendBodyIframe(config, window);
+        initAppendBodyIframe(config, win);
       }
-      var element = _createElement.call(window.document, tagName, options);
+      const element = createElement(tagName, options);
       Object.defineProperty(element, "src", {
-        set: function (src) {
-          delete element.src; // remove this setter so we don't get stuck in an infinite loop
-          element.src = fixUrl(src, config, location);
+        set(src) {
+          delete element.src;
+          element.src = fixUrl(src, config, win.location) ?? src;
         },
-        configurable: true,
+        configurable: true
       });
-      // todo: let a DOM mutation observer handle href attributes when they're added to the document
       Object.defineProperty(element, "href", {
-        set: function (href) {
-          delete element.href; // remove this setter so we don't get stuck in an infinite loop
-          element.href = fixUrl(href, config, location);
+        set(href) {
+          delete element.href;
+          element.href = fixUrl(href, config, win.location) ?? href;
         },
-        configurable: true,
+        configurable: true
       });
-      // todo: consider restoring the setter in case the client js changes the value later (does that happen?)
       return element;
     };
   }
-
-  // js on some sites, such as youtube, uses an iframe to grab native APIs such as history, so we need to fix those also.
-  // document.body isn't available when this script is first executed,
-  // so we'll also try when createElement is called, but set a flag to ensure it only installs once
-  function initAppendBodyIframe(config, window) {
-    if (
-      !window.document ||
-      !window.document.body ||
-      !window.document.body.appendChild ||
-      window.document.body.unblockerIframeAppendListenerInstalled
-    ) {
+  function initAppendBodyIframe(config, win) {
+    const body = win.document?.body;
+    if (!body?.appendChild || body.unblockerIframeAppendListenerInstalled) {
       return;
     }
-
-    var _appendChild = window.document.body.appendChild;
-
-    window.document.body.appendChild = function (element) {
-      var ret = _appendChild.call(window.document.body, element);
-      if (
-        element.tagName &&
-        element.tagName.toLowerCase() === "iframe" &&
-        element.src === "about:blank" &&
-        element.contentWindow
-      ) {
+    const appendChild = body.appendChild.bind(body);
+    body.appendChild = function(element) {
+      const ret = appendChild(element);
+      if (element instanceof HTMLIFrameElement && element.src === "about:blank" && element.contentWindow) {
         initForWindow(config, element.contentWindow);
       }
       return ret;
     };
-    window.document.body.unblockerIframeAppendListenerInstalled = true;
+    body.unblockerIframeAppendListenerInstalled = true;
   }
-
-  function initWebSockets(config, window) {
-    if (!window.WebSocket) return;
-    var _WebSocket = window.WebSocket;
-    var prefix = config.prefix;
-    var proxyHost = location.host;
-    var isSecure = location.protocol === "https";
-    var target = location.pathname.substr(prefix.length);
-    var targetURL = new URL(target);
-
-    // ws:// or wss:// then at least one char for location,
-    // then either the end or a path
-    var reWsUrl = /^ws(s?):\/\/([^/]+)($|\/.*)/;
-
-    window.WebSocket = function (url, protocols) {
-      var parsedUrl = url.match(reWsUrl);
+  function initWebSockets(config, win) {
+    if (!win.WebSocket)
+      return;
+    const WebSocketCtor = win.WebSocket;
+    const prefix = config.prefix;
+    const proxyHost = win.location.host;
+    const isSecure = win.location.protocol === "https:";
+    const target = win.location.pathname.substr(prefix.length);
+    const targetURL = new URL(target, win.location.origin);
+    const reWsUrl = /^ws(s?):\/\/([^/]+)($|\/.*)/;
+    win.WebSocket = function(url, protocols) {
+      const urlStr = String(url);
+      const parsedUrl = urlStr.match(reWsUrl);
       if (parsedUrl) {
-        var wsSecure = parsedUrl[1];
-        // force downgrade if wss:// is called on insecure page
-        // (in case the proxy only supports http)
-        var wsProto = isSecure ? "ws" + wsSecure + "://" : "ws://";
-        var wsHost = parsedUrl[2];
-        // deal with "relative" js that uses the current url rather than a hard-coded one
-        if (wsHost === location.host || wsHost === location.hostname) {
-          // todo: handle situation where ws hostname === location.hostname but ports differ
+        const wsSecure = parsedUrl[1];
+        const wsProto = isSecure ? `ws${wsSecure}://` : "ws://";
+        let wsHost = parsedUrl[2];
+        if (wsHost === win.location.host || wsHost === win.location.hostname) {
           wsHost = targetURL.host;
         }
-        var wsPath = parsedUrl[3];
-        // prefix the websocket with the proxy server
+        const wsPath = parsedUrl[3];
         try {
-          return new _WebSocket(
-            wsProto +
-              proxyHost +
-              prefix +
-              "http" +
-              wsSecure +
-              "://" +
-              wsHost +
-              wsPath
-          );
+          return new WebSocketCtor(`${wsProto}${proxyHost}${prefix}http${wsSecure}://${wsHost}${wsPath}`, protocols);
         } catch (e) {
           console.error("Failed to create WebSocket", e);
         }
       }
-      // fallback in case the regex failed
-      return new _WebSocket(url, protocols);
+      return new WebSocketCtor(url, protocols);
     };
   }
-
-  // todo: figure out how youtube bypasses this
-  // notes: look at bindHistoryStateFunctions_ - it looks like it checks the contentWindow.history of an iframe *fitst*, then it's __proto__, then the global history api
-  //        - so, we need to inject this into iframes also
-  function initPushState(config, window) {
-    if (!window.history || !window.history.pushState) return;
-
-    var _pushState = window.history.pushState;
-    window.history.pushState = function (state, title, url) {
+  function initPushState(config, win) {
+    if (!win.history?.pushState)
+      return;
+    const pushState = win.history.pushState.bind(win.history);
+    win.history.pushState = function(state, title, url) {
       if (url) {
-        url = fixUrl(url, config, location);
-        config.url = new URL(url, config.url);
-        return _pushState.call(history, state, title, url);
+        const fixed = fixUrl(String(url), config, win.location) ?? String(url);
+        config.url = new URL(fixed, String(config.url));
+        return pushState(state, title, fixed);
       }
+      return pushState(state, title, url);
     };
-
-    if (!window.history.replaceState) return;
-    var _replaceState = window.history.replaceState;
-    window.history.replaceState = function (state, title, url) {
+    if (!win.history.replaceState)
+      return;
+    const replaceState = win.history.replaceState.bind(win.history);
+    win.history.replaceState = function(state, title, url) {
       if (url) {
-        url = fixUrl(url, config, location);
-        config.url = new URL(url, config.url);
-        return _replaceState.call(history, state, title, url);
+        const fixed = fixUrl(String(url), config, win.location) ?? String(url);
+        config.url = new URL(fixed, String(config.url));
+        return replaceState(state, title, fixed);
       }
+      return replaceState(state, title, url);
     };
   }
-
-  function initForWindow(config, window) {
-    console.log("begin unblocker client scripts", config, window);
-    initXMLHttpRequest(config, window);
-    initFetch(config, window);
-    initCreateElement(config, window);
-    initAppendBodyIframe(config, window);
-    initWebSockets(config, window);
-    initPushState(config, window);
-    if (window === global) {
-      // leave no trace
-      delete global.unblockerInit;
+  function initForWindow(config, win) {
+    console.log("begin unblocker client scripts", config, win);
+    initXMLHttpRequest(config, win);
+    initFetch(config, win);
+    initCreateElement(config, win);
+    initAppendBodyIframe(config, win);
+    initWebSockets(config, win);
+    initPushState(config, win);
+    if (typeof window !== "undefined" && win === window) {
+      delete window.unblockerInit;
     }
     console.log("unblocker client scripts initialized");
   }
-
-  // either export things for testing or put the init method into the global scope to be called
-  // with config by the next script tag in a browser
-  /*globals module*/
-  if (typeof module === "undefined") {
-    global.unblockerInit = initForWindow;
-  } else {
-    module.exports = {
-      initForWindow: initForWindow,
-      fixUrl: fixUrl,
-    };
+  if (typeof window !== "undefined") {
+    window.unblockerInit = initForWindow;
   }
-})(this); // window in a browser, global in node.js
-
-
-// David's stuff:
-// Find all images and replace them with a random painting by Claude Monet
-// Todo:
-// - Get image sizes and replace with the same size painting
-// - Do a second pass, for images that load later?
-//   Filter out any images already replaced.
-
-
-// Wait until document is ready:
-document.addEventListener('DOMContentLoaded', function() {
-  console.log("Replace images with paintings by Claude Monet")
-
-  monetiseAllImages();
-
-  window.setInterval(function() {
-    // console.log('tick')
+  function monetiseAllImages() {
+    let count = 0;
+    const images = document.getElementsByTagName("img");
+    for (let i = 0;i < images.length; i++) {
+      replaceImage(images[i]);
+      count++;
+    }
+    const backgroundImages = document.querySelectorAll('[style*="background-image"]');
+    for (let i = 0;i < backgroundImages.length; i++) {
+      replaceBackgroundImage(backgroundImages[i], i);
+      count++;
+    }
+    console.log(`replaced ${count} images`);
+  }
+  function replaceBackgroundImage(element, index) {
+    if (element.getAttribute("monetised")) {
+      return;
+    }
+    element.setAttribute("monetised", "true");
+    const width = element.clientWidth || 300;
+    const height = element.clientHeight || 300;
+    const seed = Math.floor(Math.random() * 1e4) + index;
+    const url = `/monet/${width}w${height}h${seed}`;
+    element.style.backgroundImage = `url(${url})`;
+  }
+  function replaceImage(image) {
+    if (image.getAttribute("monetised")) {
+      return;
+    }
+    const url = "/monet";
+    const width = image.width || 300;
+    const height = image.height || 300;
+    const seed = Math.floor(Math.random() * 1e4) + 1;
+    image.setAttribute("monetised", "true");
+    image.src = `${url}/${width}w${height}h${seed}`;
+    image.srcset = `${url}/${width}w${height}h${seed}`;
+  }
+  document.addEventListener("DOMContentLoaded", () => {
+    console.log("Replace images with paintings by Claude Monet");
     monetiseAllImages();
-  }, 500)
-
-})
-
-globalThis.monetiseAllImages = monetiseAllImages;
-
-function monetiseAllImages() {
-  let count = 0;
-  // select all images
-  const images = document.getElementsByTagName('img');
-  for(let i = 0; i < images.length; i++) {
-    replaceImage(images[i]);
-    count++;
+    window.setInterval(monetiseAllImages, 500);
+  });
+  if (typeof window !== "undefined") {
+    window.monetiseAllImages = monetiseAllImages;
   }
-
-  const backgroundImages = document.querySelectorAll('[style*="background-image"]');
-  // console.log(`checking ${backgroundImages.length} background images`)
-  // backgroundImages.forEach(replaceBackgroundImage)
-  for(let i = 0; i < backgroundImages.length; i++) {
-    replaceBackgroundImage(backgroundImages[i], i);
-    count++;
-  }
-  console.log(`replaced ${count} images`)
-}
-
-function replaceBackgroundImage(element, i){
-  if (element.getAttribute('monetised')){
-    console.log("element already monetised")
-    console.log(element)
-    return;
-  }
-
-  element.setAttribute('monetised', 'true')
-  const style = element.getAttribute('style');
-  const random = Math.floor(Math.random() * 10000) + i;
-  const url = `/monet/${random}`
-  console.log("Original style", style)
-  console.log("Setting background image", `url(${url})`)
-
-  element.style.replaceBackgroundImage = `url(${url})`;
-  element.style.backgroundImage = `url(${url})`;
-  element.setAttribute('style', `background-image: url(${url})`)
-}
-
-function replaceImage(image){
-  // .filter(image => !image.monetised)
-  if (image.getAttribute('monetised')) {
-    // console.log("image already monetised")
-    return;
-  }
-  // console.log("replacing image")
-  const url = '/monet'
-
-  width = image.width || 300;
-  height = image.height || 300;
-  id = Math.floor(Math.random() * 10000) + 1;
-  image.setAttribute('monetised', 'true')
-
-  image.src = `${url}/${width}w${height}h${id}`;
-  image.srcset = `${url}/${width}w${height}h${id}`;
-  // image.style = `width: ${width}px; height: ${height}px; object-fit: cover;`;
-}
+})();
