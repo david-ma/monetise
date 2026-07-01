@@ -119,7 +119,22 @@ const homepage: Controller = (res, req, website, requestInfo) => {
     siteVisit(website, req, requestInfo.ip, req.headers['user-agent'])
       .catch((error) => console.error('siteVisit failed:', error))
       .then(() => {
-        serveFile(res, path.join(rootDir, 'public', 'index.html'))
+        void website
+          .asyncServeHandlebarsTemplate({
+            res,
+            templatePath: path.join(srcDir, 'index.hbs'),
+            data: {
+              title: 'Monetise your website',
+              version: website.version,
+            },
+          })
+          .catch((error) => {
+            console.error('Failed to render homepage:', error)
+            if (!res.headersSent) {
+              res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' })
+              res.end('Error rendering homepage')
+            }
+          })
       })
   }
 }
