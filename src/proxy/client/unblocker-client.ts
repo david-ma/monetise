@@ -377,7 +377,24 @@ export function monetiseAllImages(): void {
     replaceBackgroundImage(backgroundImages[i], i)
     count++
   }
+
+  const canvases = document.getElementsByTagName('canvas')
+  for (let i = 0; i < canvases.length; i++) {
+    replaceCanvas(canvases[i])
+    count++
+  }
   console.log(`queued ${count} images for monetisation`)
+}
+
+function replaceCanvas(canvas: HTMLCanvasElement): void {
+  if (canvas.getAttribute('monetised') || canvas.getAttribute('monetising')) {
+    return
+  }
+
+  canvas.setAttribute('monetising', 'true')
+  canvas.style.backgroundImage = 'url(/monet)'
+  canvas.setAttribute('monetised', 'true')
+  canvas.removeAttribute('monetising')
 }
 
 function replaceBackgroundImage(element: HTMLElement, index: number): void {
