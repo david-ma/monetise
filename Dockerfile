@@ -2,17 +2,17 @@
 # Site-specific deps are installed under websites/monetise.
 FROM frostickle/thalia:1.1.2
 
-USER root
-COPY . /usr/app/Thalia/websites/monetise
+COPY --chown=bun:bun . /usr/app/Thalia/websites/monetise
 
+USER bun
 WORKDIR /usr/app/Thalia/websites/monetise
 RUN bun install --frozen-lockfile --production \
-  && bun run build:client
+  && bun run build:client \
+  && mkdir -p dist
 
 ENV PROJECT=monetise
 ENV NODE_ENV=production
 
-USER bun
 WORKDIR /usr/app/Thalia
 EXPOSE 1337
-CMD ["bun", "thalia"]
+CMD ["bun", "server/cli.ts", "--project=monetise"]
