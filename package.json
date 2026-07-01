@@ -1,13 +1,15 @@
 {
   "name": "monetise",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "type": "module",
   "private": true,
   "description": "Monetise any website — replace images with Monet paintings",
   "scripts": {
     "start": "thalia",
     "dev": "thalia-develop",
-    "paintings": "bun config/images.ts"
+    "paintings": "bun config/images.ts",
+    "test": "bun test",
+    "typecheck": "bunx tsc --noEmit -p tsconfig.json"
   },
   "keywords": [],
   "author": "",
@@ -22,7 +24,11 @@
     "unblocker": "^2.3.0"
   },
   "devDependencies": {
+    "@types/formidable": "^3.5.1",
+    "@types/nodemailer": "^8.0.1",
     "@types/sequelize": "^4.28.20",
-    "bun-types": "1.3.3"
+    "bun-types": "1.3.3",
+    "sqlite3": "^6.0.1",
+    "typescript": "^5.8.3"
   }
 }

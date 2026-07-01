@@ -41,8 +41,9 @@ export class Site extends Model {
   public keywords!: string
 
   // https://sequelize.org/docs/v6/core-concepts/model-basics/#taking-advantage-of-models-being-classes
-  isDescribed() {
-    return this.description && this.description.length > 0
+  isDescribed(): boolean {
+    const description = this.get('description') as string | undefined
+    return Boolean(description && description.length > 0)
   }
 
   addVisitor(visitor: VisitorModel) {
@@ -61,6 +62,7 @@ export class Site extends Model {
 
 export interface SiteModel extends Model<SiteAttributes>, SiteAttributes {
   id: number
+  isDescribed(): boolean
   addVisitor(visitor: VisitorModel): void
 }
 
@@ -78,8 +80,8 @@ export function SiteFactory(sequelize: Sequelize): SiteStatic {
     {
       sequelize,
       tableName: 'sites',
-    }
-  )
+    },
+  ) as SiteStatic
 }
 
 export interface PaintingAttributes {
@@ -123,8 +125,8 @@ export function PaintingFactory(sequelize: Sequelize): PaintingStatic {
     {
       sequelize,
       tableName: 'paintings',
-    }
-  )
+    },
+  ) as PaintingStatic
 }
 
 export interface MonetiseDb {

@@ -86,6 +86,7 @@ async function siteVisit(
     seq.Site.findOrCreate({
       where: { url },
       defaults: {
+        url,
         title: 'title',
         description: 'description',
         keywords: 'keywords',
@@ -93,7 +94,7 @@ async function siteVisit(
     }),
     seq.Visitor.findOrCreate({
       where: { ip },
-      defaults: { userAgent: userAgent ?? '' },
+      defaults: { ip, userAgent: userAgent ?? '' },
     }),
   ]).then(([site, visitor]) => {
     visitor[0].getSites().then((sites) => {
@@ -340,6 +341,6 @@ function googleAnalyticsMiddleware(data: { contentType?: string; stream: NodeJS.
           next()
         },
       }),
-    )
+    ) as NodeJS.ReadWriteStream
   }
 }
