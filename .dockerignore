@@ -1,0 +1,5 @@
+node_modules
+data/paintings
+data/paintings2
+data/Monet
+data/postgres_export_*
