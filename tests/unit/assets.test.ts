@@ -1,10 +1,14 @@
 import { describe, expect, test } from 'bun:test'
 import {
+  ASPECT_RATIO_CANDIDATE_POOL_SIZE,
   buildSmugMugPhotoUrl,
   monetAlbumKey,
   monetPaintingUrl,
   monetPaintings,
-  paintingForSeed,
+  paintingAspectRatios,
+  paintingForAspectRatio,
+  paintingIndicesClosestToAspectRatio,
+  paintingsClosestToAspectRatio,
   paintingUrl,
   parseMonetRequestPath,
   parseSmugMugPhotoUrl,
@@ -25,6 +29,8 @@ describe('monet painting catalog', () => {
       expect(painting.hash.length).toBeGreaterThan(10)
       expect(painting.ext).toBe('jpg')
       expect(painting.alt.length).toBeGreaterThan(0)
+      expect(painting.aspectRatio).toBeGreaterThan(0)
+      expect(painting.aspectRatio).toBe(paintingAspectRatios[monetPaintings.indexOf(painting)])
     }
   })
 })
@@ -51,6 +57,56 @@ describe('parseSmugMugPhotoUrl', () => {
   })
 })
 
+describe('aspect ratio matching', () => {
+  test('pre-processes aspect ratios for every painting', () => {
+    expect(paintingAspectRatios.length).toBe(monetPaintings.length)
+    for (const ratio of paintingAspectRatios) {
+      expect(ratio).toBeGreaterThan(0)
+    }
+  })
+
+  test('returns up to ASPECT_RATIO_CANDIDATE_POOL_SIZE closest paintings', () => {
+    const pool = paintingsClosestToAspectRatio(1.5)
+    expect(pool.length).toBe(ASPECT_RATIO_CANDIDATE_POOL_SIZE)
+  })
+
+  test('prefers paintings with similar aspect ratio over extreme mismatches', () => {
+    const target = 1.5
+    const pool = paintingsClosestToAspectRatio(target)
+    const poolDistances = pool.map((p) => Math.abs(p.aspectRatio - target))
+    const worstInPool = Math.max(...poolDistances)
+
+    const outsidePool = monetPaintings.filter((p) => !pool.some((candidate) => candidate.imageKey === p.imageKey))
+    const bestOutside = Math.min(...outsidePool.map((p) => Math.abs(p.aspectRatio - target)))
+
+    expect(worstInPool).toBeLessThanOrEqual(bestOutside)
+  })
+
+  test('seed picks stably within the aspect-ratio pool', () => {
+    const a = paintingForAspectRatio(640, 480, 99)
+    const b = paintingForAspectRatio(640, 480, 99)
+    expect(a.imageKey).toBe(b.imageKey)
+
+    const pool = new Set(
+      paintingsClosestToAspectRatio(640 / 480).map((p) => p.imageKey),
+    )
+    expect(pool.has(a.imageKey)).toBe(true)
+  })
+
+  test('different seeds can pick different paintings from the same pool', () => {
+    const poolKeys = new Set(paintingIndicesClosestToAspectRatio(640 / 480).map((i) => monetPaintings[i].imageKey))
+    const picks = new Set(
+      [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20].map((seed) =>
+        paintingForAspectRatio(640, 480, seed).imageKey,
+      ),
+    )
+    expect(picks.size).toBeGreaterThan(1)
+    for (const key of picks) {
+      expect(poolKeys.has(key)).toBe(true)
+    }
+  })
+})
+
 describe('smugMugSizeForLongEdge', () => {
   test('picks the smallest tier that covers the requested long edge', () => {
     expect(smugMugSizeForLongEdge(120)).toBe('Th')
@@ -74,11 +130,10 @@ describe('monetPaintingUrl', () => {
     expect(url).toMatch(/\/S\/i-[A-Za-z0-9]+-S\.jpg$/)
   })
 
-  test('is stable for the same seed', () => {
+  test('is stable for the same seed and dimensions', () => {
     const a = monetPaintingUrl({ seed: 99, width: 640, height: 480 })
     const b = monetPaintingUrl({ seed: 99, width: 640, height: 480 })
     expect(a).toBe(b)
-    expect(paintingForSeed(99).imageKey).toBe(parseSmugMugPhotoUrl(a).photoId.slice(2))
   })
 })
 
