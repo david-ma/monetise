@@ -2,7 +2,9 @@ import { describe, expect, test } from 'bun:test'
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { resolveImageDimensions } from '../../src/proxy/client/unblocker-client'
+import {
+  resolveImageDimensions,
+} from '../../src/proxy/client/unblocker-client'
 
 const builtClient = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -43,15 +45,37 @@ describe('resolveImageDimensions', () => {
     ).toEqual({ width: 300, height: 300 })
   })
 
-  test('uses DOM for one axis and natural for the other when mixed', () => {
+  test('derives width from CSS height and intrinsic aspect ratio', () => {
+    expect(
+      resolveImageDimensions({
+        domWidth: 0,
+        domHeight: 24,
+        naturalWidth: 199,
+        naturalHeight: 24,
+      }),
+    ).toEqual({ width: 199, height: 24 })
+  })
+
+  test('derives height from CSS width and intrinsic aspect ratio', () => {
+    expect(
+      resolveImageDimensions({
+        domWidth: 199,
+        domHeight: 0,
+        naturalWidth: 199,
+        naturalHeight: 24,
+      }),
+    ).toEqual({ width: 199, height: 24 })
+  })
+
+  test('derives width from CSS height and intrinsic aspect ratio when natural height was unknown', () => {
     expect(
       resolveImageDimensions({
         domWidth: 0,
         domHeight: 64,
         naturalWidth: 1920,
-        naturalHeight: 0,
+        naturalHeight: 1080,
       }),
-    ).toEqual({ width: 1920, height: 64 })
+    ).toEqual({ width: 114, height: 64 })
   })
 })
 

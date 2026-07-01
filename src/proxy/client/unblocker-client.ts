@@ -257,13 +257,132 @@ export type ImageDimensionInput = {
   naturalHeight: number
 }
 
-/** Prefer layout (DOM) size; otherwise intrinsic (natural); otherwise fallback. */
+/** Prefer layout (DOM) size; derive missing axis from intrinsic aspect ratio when possible. */
 export function resolveImageDimensions(input: ImageDimensionInput): { width: number; height: number } {
-  const width =
-    input.domWidth > 0 ? input.domWidth : input.naturalWidth > 0 ? input.naturalWidth : FALLBACK_WIDTH
-  const height =
-    input.domHeight > 0 ? input.domHeight : input.naturalHeight > 0 ? input.naturalHeight : FALLBACK_HEIGHT
-  return { width, height }
+  let width = input.domWidth > 0 ? input.domWidth : 0
+  let height = input.domHeight > 0 ? input.domHeight : 0
+  const naturalWidth = input.naturalWidth > 0 ? input.naturalWidth : 0
+  const naturalHeight = input.naturalHeight > 0 ? input.naturalHeight : 0
+  const aspect = naturalWidth > 0 && naturalHeight > 0 ? naturalWidth / naturalHeight : 0
+
+  if (width > 0 && height > 0) {
+    return { width: Math.round(width), height: Math.round(height) }
+  }
+
+  if (width > 0 && aspect > 0) {
+    return { width: Math.round(width), height: Math.round(width / aspect) }
+  }
+
+  if (height > 0 && aspect > 0) {
+    return { width: Math.round(height * aspect), height: Math.round(height) }
+  }
+
+  if (width > 0) {
+    return { width: Math.round(width), height: Math.round(height || FALLBACK_HEIGHT) }
+  }
+
+  if (height > 0) {
+    return { width: Math.round(width || FALLBACK_WIDTH), height: Math.round(height) }
+  }
+
+  if (naturalWidth > 0 && naturalHeight > 0) {
+    return { width: naturalWidth, height: naturalHeight }
+  }
+
+  return { width: FALLBACK_WIDTH, height: FALLBACK_HEIGHT }
+}
+
+/** Parse a computed CSS length into CSS pixels (0 when auto/unknown). */
+export function parseCssLength(value: string, element: HTMLElement): number {
+  const trimmed = value.trim()
+  if (!trimmed || trimmed === 'auto' || trimmed === 'none' || trimmed.endsWith('%')) {
+    return 0
+  }
+
+  const amount = parseFloat(trimmed)
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return 0
+  }
+
+  if (trimmed.endsWith('rem')) {
+    const root = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16
+    return Math.round(amount * root)
+  }
+
+  if (trimmed.endsWith('em')) {
+    const fontSize = parseFloat(getComputedStyle(element).fontSize) || 16
+    return Math.round(amount * fontSize)
+  }
+
+  return Math.round(amount)
+}
+
+function readHtmlDimensionAttr(image: HTMLImageElement, name: 'width' | 'height'): number {
+  const attr = image.getAttribute(name)
+  if (!attr) return 0
+  const parsed = parseInt(attr, 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0
+}
+
+/** Layout box for monet sizing — rendered size, then CSS, then HTML attributes. */
+export function layoutDimensionsForImage(image: HTMLImageElement): { width: number; height: number } {
+  const rect = image.getBoundingClientRect()
+  if (rect.width > 0 && rect.height > 0) {
+    return { width: Math.round(rect.width), height: Math.round(rect.height) }
+  }
+
+  if (image.clientWidth > 0 && image.clientHeight > 0) {
+    return { width: image.clientWidth, height: image.clientHeight }
+  }
+
+  const style = window.getComputedStyle(image)
+  const width = parseCssLength(style.width, image)
+  const height = parseCssLength(style.height, image)
+  if (width > 0 || height > 0) {
+    return { width, height }
+  }
+
+  const attrWidth = readHtmlDimensionAttr(image, 'width')
+  const attrHeight = readHtmlDimensionAttr(image, 'height')
+  if (attrWidth > 0 || attrHeight > 0) {
+    return { width: attrWidth, height: attrHeight }
+  }
+
+  if (image.clientWidth > 0 || image.clientHeight > 0) {
+    return { width: image.clientWidth, height: image.clientHeight }
+  }
+
+  return { width: 0, height: 0 }
+}
+
+async function probeSvgDimensions(src: string): Promise<{ naturalWidth: number; naturalHeight: number }> {
+  try {
+    const response = await fetch(src)
+    if (!response.ok) {
+      return { naturalWidth: 0, naturalHeight: 0 }
+    }
+
+    const text = await response.text()
+    const viewBox = text.match(/viewBox=["']([^"']+)["']/i)
+    if (viewBox) {
+      const parts = viewBox[1].trim().split(/[\s,]+/).map(Number)
+      if (parts.length === 4 && parts[2] > 0 && parts[3] > 0) {
+        return { naturalWidth: Math.round(parts[2]), naturalHeight: Math.round(parts[3]) }
+      }
+    }
+
+    const widthMatch = text.match(/\bwidth=["'](\d+(?:\.\d+)?)/i)
+    const heightMatch = text.match(/\bheight=["'](\d+(?:\.\d+)?)/i)
+    const width = widthMatch ? Math.round(Number(widthMatch[1])) : 0
+    const height = heightMatch ? Math.round(Number(heightMatch[1])) : 0
+    if (width > 0 && height > 0) {
+      return { naturalWidth: width, naturalHeight: height }
+    }
+  } catch {
+    /* ignore */
+  }
+
+  return { naturalWidth: 0, naturalHeight: 0 }
 }
 
 function probeNaturalSize(src: string): Promise<{ naturalWidth: number; naturalHeight: number }> {
@@ -311,16 +430,26 @@ async function naturalDimensionsForImage(image: HTMLImageElement): Promise<{
     return { naturalWidth, naturalHeight }
   }
 
-  return probeNaturalSize(src)
+  const probed = await probeNaturalSize(src)
+  if (probed.naturalWidth > 0 && probed.naturalHeight > 0) {
+    return probed
+  }
+
+  if (/\.svg(?:$|[?#])/i.test(src)) {
+    return probeSvgDimensions(src)
+  }
+
+  return probed
 }
 
 export async function dimensionsForImageElement(
   image: HTMLImageElement,
 ): Promise<{ width: number; height: number }> {
   const natural = await naturalDimensionsForImage(image)
+  const layout = layoutDimensionsForImage(image)
   return resolveImageDimensions({
-    domWidth: image.width,
-    domHeight: image.height,
+    domWidth: layout.width,
+    domHeight: layout.height,
     naturalWidth: natural.naturalWidth,
     naturalHeight: natural.naturalHeight,
   })
@@ -425,12 +554,32 @@ function applyMonetImageLayout(
   height: number,
   url: string,
 ): void {
-  image.style.width = `${width}px`
-  image.style.height = `${height}px`
-  image.style.objectFit = 'cover'
+  const style = window.getComputedStyle(image)
+  const cssWidth = parseCssLength(style.width, image)
+  const cssHeight = parseCssLength(style.height, image)
+  const attrWidth = readHtmlDimensionAttr(image, 'width')
+  const attrHeight = readHtmlDimensionAttr(image, 'height')
+
   image.src = url
   image.srcset = url
   image.setAttribute('monetised', 'true')
+
+  // Respect one-sided CSS constraints (e.g. Tailwind h-6) instead of forcing both axes.
+  if ((cssWidth > 0 || attrWidth > 0) && (cssHeight > 0 || attrHeight > 0)) {
+    image.style.width = `${width}px`
+    image.style.height = `${height}px`
+  } else if (cssHeight > 0 || attrHeight > 0) {
+    image.style.width = 'auto'
+    image.style.height = `${height}px`
+  } else if (cssWidth > 0 || attrWidth > 0) {
+    image.style.width = `${width}px`
+    image.style.height = 'auto'
+  } else {
+    image.style.width = `${width}px`
+    image.style.height = `${height}px`
+  }
+
+  image.style.objectFit = 'contain'
 }
 
 function replaceImage(image: HTMLImageElement, index: number): void {
