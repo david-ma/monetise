@@ -1,16 +1,16 @@
-FROM oven/bun:1 AS base
+# Extends the shared Thalia runtime (Bun + pre-installed Thalia core).
+# Site-specific deps are installed under websites/monetise.
+FROM frostickle/thalia:1.1.2
 
-WORKDIR /app
+COPY . /usr/app/Thalia/websites/monetise
 
-COPY package.json bun.lock ./
-RUN bun install --frozen-lockfile
+WORKDIR /usr/app/Thalia/websites/monetise
+RUN bun install --frozen-lockfile --production \
+  && bun run build:client
 
-COPY . .
-
-# GeoIP database and Monet image assets are expected under data/
-# Postgres is a separate service — set NODE_ENV=docker and link host `db`.
+ENV PROJECT=monetise
 ENV NODE_ENV=production
-EXPOSE 1337
 
-# TODO: replace with frostickle/thalia:1.1.0 once published to Docker Hub
+WORKDIR /usr/app/Thalia
+EXPOSE 1337
 CMD ["bun", "thalia"]

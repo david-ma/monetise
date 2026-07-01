@@ -8,7 +8,7 @@ services:
       - NODE_ENV=docker
       - NODE_OPTIONS=--max_http_header_size=65536
     volumes:
-      - ./data:/app/data
+      - ./data:/usr/app/Thalia/websites/monetise/data
     # restart: always
     depends_on:
       db:
