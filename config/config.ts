@@ -34,8 +34,6 @@ const unblockerConfig = {
 }
 const handleRequest = unblocker(unblockerConfig)
 
-const botIpAddresses: Record<string, number> = {}
-
 function readView(name: string): string {
   return fs.readFileSync(path.join(srcDir, `${name}.hbs`), 'utf8')
 }
@@ -93,12 +91,6 @@ async function siteVisit(
 
 const homepage: Controller = (res, req, website, requestInfo) => {
   setVisitorCookie(res)
-
-  if ((botIpAddresses[requestInfo.ip] ?? 0) > 10) {
-    res.writeHead(302, { Location: '/robots.txt' })
-    res.end()
-    return
-  }
 
   if (requestInfo.query.goto) {
     const sections = requestInfo.query.goto.split('/proxy/')
@@ -171,8 +163,6 @@ const proxy: Controller = (res, req, website, requestInfo) => {
     res.writeHead(302, { Location: url })
     res.end()
   } else if (!cookies?.monetiseVisitor && !cookies?.cookieName) {
-    botIpAddresses[requestInfo.ip] = (botIpAddresses[requestInfo.ip] ?? 0) + 1
-
     res.writeHead(303, {
       Location: `//${req.headers.host}/?goto=${encodeURIComponent(url)}`,
     })

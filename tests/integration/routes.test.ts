@@ -38,6 +38,15 @@ describeDatabaseOnline('monetise HTTP routes', () => {
     expect(res.headers.get('set-cookie')).toMatch(/monetiseVisitor=/)
   })
 
+  test('GET / still serves homepage after many uncookied proxy hits', async () => {
+    for (let i = 0; i < 15; i++) {
+      await fetchFromServer('/proxy/https://example.com', port, { redirect: 'manual' })
+    }
+    const res = await fetchFromServer('/', port, { redirect: 'manual' })
+    expect(res.status).toBe(200)
+    expect(res.headers.get('location')).not.toBe('/robots.txt')
+  })
+
   test('GET /?goto= redirects into the proxy', async () => {
     const res = await fetchFromServer('/?goto=https://example.com', port, {
       redirect: 'manual',
