@@ -118,6 +118,7 @@ const homepage: Controller = (res, req, website, requestInfo) => {
             data: {
               title: 'Monetise your website',
               version: website.version,
+              gaMeasurementId: gaMeasurementId || undefined,
             },
           })
           .catch((error) => {
@@ -307,7 +308,7 @@ const config: RawWebsiteConfig = {
 
 export { config }
 
-const google_analytics_id = process.env.GA_ID || 'UA-49861162-2'
+const gaMeasurementId = process.env.GA_MEASUREMENT_ID || process.env.GA_ID || 'G-CCBVZ1JTY7'
 
 /** Stop Cloudflare/nginx caching proxied pages (empty-body cache poison broke prod HTML). */
 function noStoreProxyMiddleware(data: {
@@ -319,40 +320,56 @@ function noStoreProxyMiddleware(data: {
   delete data.headers['expires']
 }
 
-function addGa(html: string): string {
-  if (google_analytics_id) {
-    const ga = [
-      '<script type="text/javascript">',
-      'var _gaq = []; // overwrite the existing one, if any',
-      `_gaq.push(['_setAccount', '${google_analytics_id}']);`,
-      "_gaq.push(['_trackPageview']);",
-      '(function() {',
-      "  var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;",
-      "  ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';",
-      "  var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);",
-      '})();',
-      '</script>',
-    ].join('\n')
-    html = html.replace('</body>', ga + '\n\n</body>')
-  }
-  return html
+function gaSnippet(): string {
+  if (!gaMeasurementId) return ''
+  return [
+    `<script async src="https://www.googletagmanager.com/gtag/js?id=${gaMeasurementId}"></script>`,
+    '<script>',
+    'window.dataLayer = window.dataLayer || [];',
+    'function gtag(){dataLayer.push(arguments);}',
+    'gtag("js", new Date());',
+    `gtag("config", "${gaMeasurementId}");`,
+    '</script>',
+  ].join('\n')
 }
 
+/** Stream HTML through — buffering the whole body broke nginx chunked encoding on large pages. */
 function googleAnalyticsMiddleware(data: { contentType?: string; stream: NodeJS.ReadWriteStream }) {
   if (!data.contentType?.includes('text/html')) {
     return
   }
 
-  let html = ''
+  const ga = gaSnippet()
+  if (!ga) return
+
+  const closing = '</body>'
+  let pending = ''
+
   data.stream = data.stream.pipe(
     new Transform({
       decodeStrings: false,
       transform(chunk, _encoding, next) {
-        html += chunk.toString()
+        let text = pending + chunk.toString()
+        pending = ''
+
+        if (text.includes(closing)) {
+          text = text.replace(closing, `${ga}\n\n${closing}`)
+        } else {
+          for (let i = closing.length - 1; i > 0; i--) {
+            const suffix = text.slice(-i)
+            if (closing.startsWith(suffix)) {
+              pending = suffix
+              text = text.slice(0, -i)
+              break
+            }
+          }
+        }
+
+        if (text) this.push(text, 'utf8')
         next()
       },
       flush(done) {
-        this.push(addGa(html))
+        if (pending) this.push(pending, 'utf8')
         done()
       },
     }),
