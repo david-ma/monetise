@@ -10,7 +10,7 @@ import catalog from '../data/smugmug-monet.json'
 /** How many closest-aspect-ratio paintings to draw from before picking at random. */
 export const ASPECT_RATIO_CANDIDATE_POOL_SIZE = 20
 
-export type SmugMugSize = 'Ti' | 'Th' | 'S' | 'M' | 'L' | 'XL' | 'X2' | 'X3' | 'X4' | 'X5' | '4k' | '5k' | 'O'
+export type SmugMugSize = 'Ti' | 'Th' | 'S' | 'M' | 'L' | 'XL' | 'X2' | 'X3' // | 'X4' | 'X5' | '4k' | '5k' | 'O'
 
 /** Parsed components of a SmugMug photos.smugmug.com embed URL. */
 export interface SmugMugPhotoUrlParts {

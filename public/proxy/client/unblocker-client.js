@@ -42,6 +42,7 @@
   __export(exports_unblocker_client, {
     resolveImageDimensions: () => resolveImageDimensions,
     parseCssLength: () => parseCssLength,
+    originalAssetUrl: () => originalAssetUrl,
     monetiseAllImages: () => monetiseAllImages,
     layoutDimensionsForImage: () => layoutDimensionsForImage,
     initForWindow: () => initForWindow,
@@ -228,6 +229,48 @@
   }
   var FALLBACK_WIDTH = 300;
   var FALLBACK_HEIGHT = 300;
+  var PROXY_PREFIX = "/proxy/";
+  function originalAssetUrl(src) {
+    const trimmed = src.trim();
+    if (!trimmed || trimmed.startsWith("/monet")) {
+      return trimmed;
+    }
+    const payload = extractProxiedPayload(trimmed);
+    if (!payload) {
+      return trimmed;
+    }
+    return stripProxyQueryParams(payload);
+  }
+  function extractProxiedPayload(src) {
+    if (src.startsWith(PROXY_PREFIX)) {
+      const payload = src.slice(PROXY_PREFIX.length);
+      return /^https?:\/\//i.test(payload) ? payload : null;
+    }
+    try {
+      const parsed = new URL(src);
+      const marker = PROXY_PREFIX;
+      const idx = parsed.pathname.indexOf(marker);
+      if (idx === -1) {
+        return null;
+      }
+      const payload = parsed.pathname.slice(idx + marker.length) + parsed.search + parsed.hash;
+      return /^https?:\/\//i.test(payload) ? payload : null;
+    } catch {
+      return null;
+    }
+  }
+  function stripProxyQueryParams(url) {
+    try {
+      const parsed = new URL(url);
+      parsed.searchParams.delete("__proxy_cookies_to");
+      return parsed.toString();
+    } catch {
+      return url.replace(/([?&])__proxy_cookies_to=[^&]*/g, "$1").replace(/[?&]$/, "");
+    }
+  }
+  function isSvgUrl(src) {
+    return /\.svg(?:$|[?#])/i.test(src);
+  }
   function resolveImageDimensions(input) {
     let width = input.domWidth > 0 ? input.domWidth : 0;
     let height = input.domHeight > 0 ? input.domHeight : 0;
@@ -281,13 +324,6 @@
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
   }
   function layoutDimensionsForImage(image) {
-    const rect = image.getBoundingClientRect();
-    if (rect.width > 0 && rect.height > 0) {
-      return { width: Math.round(rect.width), height: Math.round(rect.height) };
-    }
-    if (image.clientWidth > 0 && image.clientHeight > 0) {
-      return { width: image.clientWidth, height: image.clientHeight };
-    }
     const style = window.getComputedStyle(image);
     const width = parseCssLength(style.width, image);
     const height = parseCssLength(style.height, image);
@@ -298,9 +334,6 @@
     const attrHeight = readHtmlDimensionAttr(image, "height");
     if (attrWidth > 0 || attrHeight > 0) {
       return { width: attrWidth, height: attrHeight };
-    }
-    if (image.clientWidth > 0 || image.clientHeight > 0) {
-      return { width: image.clientWidth, height: image.clientHeight };
     }
     return { width: 0, height: 0 };
   }
@@ -350,27 +383,34 @@
     });
   }
   async function naturalDimensionsForImage(image) {
-    let naturalWidth = image.naturalWidth;
-    let naturalHeight = image.naturalHeight;
-    if (naturalWidth > 0 && naturalHeight > 0) {
-      return { naturalWidth, naturalHeight };
-    }
     const src = image.currentSrc || image.src;
     if (!src || src.startsWith("/monet")) {
       return { naturalWidth: 0, naturalHeight: 0 };
     }
-    await waitForImageLoad(image);
-    naturalWidth = image.naturalWidth;
-    naturalHeight = image.naturalHeight;
-    if (naturalWidth > 0 && naturalHeight > 0) {
-      return { naturalWidth, naturalHeight };
+    const probeSrc = originalAssetUrl(src);
+    const isProxied = probeSrc !== src;
+    if (isSvgUrl(probeSrc)) {
+      const svg = await probeSvgDimensions(probeSrc);
+      if (svg.naturalWidth > 0 && svg.naturalHeight > 0) {
+        return svg;
+      }
     }
-    const probed = await probeNaturalSize(src);
+    const probed = await probeNaturalSize(probeSrc);
     if (probed.naturalWidth > 0 && probed.naturalHeight > 0) {
       return probed;
     }
-    if (/\.svg(?:$|[?#])/i.test(src)) {
-      return probeSvgDimensions(src);
+    if (!isProxied) {
+      let naturalWidth = image.naturalWidth;
+      let naturalHeight = image.naturalHeight;
+      if (naturalWidth > 0 && naturalHeight > 0) {
+        return { naturalWidth, naturalHeight };
+      }
+      await waitForImageLoad(image);
+      naturalWidth = image.naturalWidth;
+      naturalHeight = image.naturalHeight;
+      if (naturalWidth > 0 && naturalHeight > 0) {
+        return { naturalWidth, naturalHeight };
+      }
     }
     return probed;
   }
@@ -403,7 +443,7 @@
     const natural = { naturalWidth: 0, naturalHeight: 0 };
     const bgUrl = parseBackgroundImageUrl(element);
     if (bgUrl && !bgUrl.startsWith("/monet")) {
-      Object.assign(natural, await probeNaturalSize(bgUrl));
+      Object.assign(natural, await probeNaturalSize(originalAssetUrl(bgUrl)));
     }
     return resolveImageDimensions({
       domWidth: element.clientWidth,
@@ -471,17 +511,16 @@
     if ((cssWidth > 0 || attrWidth > 0) && (cssHeight > 0 || attrHeight > 0)) {
       image.style.width = `${width}px`;
       image.style.height = `${height}px`;
+      image.style.objectFit = "contain";
     } else if (cssHeight > 0 || attrHeight > 0) {
       image.style.width = "auto";
       image.style.height = `${height}px`;
+      image.style.objectFit = "contain";
     } else if (cssWidth > 0 || attrWidth > 0) {
       image.style.width = `${width}px`;
       image.style.height = "auto";
-    } else {
-      image.style.width = `${width}px`;
-      image.style.height = `${height}px`;
+      image.style.objectFit = "contain";
     }
-    image.style.objectFit = "contain";
   }
   function replaceImage(image, index) {
     if (image.getAttribute("monetised") || image.getAttribute("monetising")) {

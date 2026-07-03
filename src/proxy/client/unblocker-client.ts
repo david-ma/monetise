@@ -1,6 +1,70 @@
 /**
- * Unblocker client script + Monet image replacement.
+ * Client script injected into proxied third-party pages.
  * Bundled to public/proxy/client/unblocker-client.js (bun run build:client).
+ *
+ * ## Part 1 — Unblocker (URL rewriting)
+ *
+ * When a site is loaded through the Monetise proxy, its origin is our server and
+ * paths are prefixed (e.g. /proxy/https://example.com/...). Page scripts that
+ * fetch assets, navigate, or open WebSockets using absolute URLs would otherwise
+ * bypass the proxy. initForWindow() monkey-patches the browsing context so
+ * outbound http(s) URLs are rewritten to stay under the proxy prefix:
+ *
+ *   - fixUrl() — core rewriter; resolves relative URLs against the current
+ *     proxied page, skips already-proxied and non-http(s) URLs, and blocks
+ *     entries on the banlist (e.g. posthog analytics).
+ *   - XMLHttpRequest.open, fetch — rewrite request URLs.
+ *   - document.createElement — intercept src/href setters on new elements.
+ *   - history.pushState / replaceState — rewrite SPA navigation URLs.
+ *   - WebSocket — tunnel through the proxy host.
+ *   - body.appendChild — re-run initForWindow inside about:blank iframes.
+ *
+ * Exposed as window.unblockerInit(config, win) until the top window finishes init.
+ *
+ * ## Part 2 — Monet image replacement
+ *
+ * After DOMContentLoaded, monetiseAllImages() scans the page (and re-runs every
+ * 500 ms for late-added content) and swaps visual media for Monet painting URLs
+ * served at /monet/{width}w{height}h{seed}:
+ *
+ *   - <img> — replaceImage()
+ *   - elements with background-image — replaceBackgroundImage()
+ *   - <canvas> — replaceCanvas() (placeholder url(/monet))
+ *
+ * Elements are tagged monetising / monetised to avoid double-processing.
+ *
+ * ### Dimension resolution
+ *
+ * Painting size is chosen by resolveImageDimensions(), merging two inputs:
+ *
+ *   1. Layout constraints (layoutDimensionsForImage) — explicit CSS width/height
+ *      or HTML width/height attributes only. We deliberately do NOT read
+ *      getBoundingClientRect or clientWidth/Height; the rendered box is whatever
+ *      the page stylesheet already produces, and we should not bake that into
+ *      inline styles unnecessarily.
+ *
+ *   2. Intrinsic size (naturalDimensionsForImage) — probes use originalAssetUrl()
+ *      to fetch from the upstream site directly, bypassing our proxy's monet redirect
+ *      (which would return a full-size JPEG and corrupt dimensions). For .svg URLs,
+ *      parse viewBox / width / height from markup first, then an off-screen Image().
+ *
+ *      Element naturalWidth/Height is only trusted when the src is not proxied.
+ *
+ * Merge rules (resolveImageDimensions):
+ *   - Both layout axes set → use layout size.
+ *   - One layout axis set → derive the other from intrinsic aspect ratio.
+ *   - No layout constraints → use intrinsic size.
+ *   - Neither available → fallback 300×300.
+ *
+ * Background elements use the element's clientWidth/Height as layout (there is no
+ * separate img intrinsic box) plus probed background-image URL dimensions.
+ *
+ * ### Applying the swap (applyMonetImageLayout)
+ *
+ * The Monet URL always uses the resolved width×height. Inline style overrides are
+ * applied only when the page already declares explicit constraints — both axes,
+ * height-only (width: auto), or width-only (height: auto). With no explicit
+ * constraints we replace src/srcset only and leave sizing to the page CSS.
  */
 /// <reference lib="dom" />
 
@@ -250,6 +314,61 @@ if (typeof window !== 'undefined') {
 const FALLBACK_WIDTH = 300
 const FALLBACK_HEIGHT = 300
 
+const PROXY_PREFIX = '/proxy/'
+
+/**
+ * Strip the Monetise proxy wrapper from an asset URL so dimension probes hit the
+ * upstream origin (e.g. https://greens.org.au/...) instead of our server, which
+ * would redirect image requests to Monet paintings.
+ */
+export function originalAssetUrl(src: string): string {
+  const trimmed = src.trim()
+  if (!trimmed || trimmed.startsWith('/monet')) {
+    return trimmed
+  }
+
+  const payload = extractProxiedPayload(trimmed)
+  if (!payload) {
+    return trimmed
+  }
+
+  return stripProxyQueryParams(payload)
+}
+
+function extractProxiedPayload(src: string): string | null {
+  if (src.startsWith(PROXY_PREFIX)) {
+    const payload = src.slice(PROXY_PREFIX.length)
+    return /^https?:\/\//i.test(payload) ? payload : null
+  }
+
+  try {
+    const parsed = new URL(src)
+    const marker = PROXY_PREFIX
+    const idx = parsed.pathname.indexOf(marker)
+    if (idx === -1) {
+      return null
+    }
+    const payload = parsed.pathname.slice(idx + marker.length) + parsed.search + parsed.hash
+    return /^https?:\/\//i.test(payload) ? payload : null
+  } catch {
+    return null
+  }
+}
+
+function stripProxyQueryParams(url: string): string {
+  try {
+    const parsed = new URL(url)
+    parsed.searchParams.delete('__proxy_cookies_to')
+    return parsed.toString()
+  } catch {
+    return url.replace(/([?&])__proxy_cookies_to=[^&]*/g, '$1').replace(/[?&]$/, '')
+  }
+}
+
+function isSvgUrl(src: string): boolean {
+  return /\.svg(?:$|[?#])/i.test(src)
+}
+
 export type ImageDimensionInput = {
   domWidth: number
   domHeight: number
@@ -324,17 +443,8 @@ function readHtmlDimensionAttr(image: HTMLImageElement, name: 'width' | 'height'
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0
 }
 
-/** Layout box for monet sizing — rendered size, then CSS, then HTML attributes. */
+/** Explicit layout constraints only — CSS width/height or HTML attributes, not rendered box. */
 export function layoutDimensionsForImage(image: HTMLImageElement): { width: number; height: number } {
-  const rect = image.getBoundingClientRect()
-  if (rect.width > 0 && rect.height > 0) {
-    return { width: Math.round(rect.width), height: Math.round(rect.height) }
-  }
-
-  if (image.clientWidth > 0 && image.clientHeight > 0) {
-    return { width: image.clientWidth, height: image.clientHeight }
-  }
-
   const style = window.getComputedStyle(image)
   const width = parseCssLength(style.width, image)
   const height = parseCssLength(style.height, image)
@@ -346,10 +456,6 @@ export function layoutDimensionsForImage(image: HTMLImageElement): { width: numb
   const attrHeight = readHtmlDimensionAttr(image, 'height')
   if (attrWidth > 0 || attrHeight > 0) {
     return { width: attrWidth, height: attrHeight }
-  }
-
-  if (image.clientWidth > 0 || image.clientHeight > 0) {
-    return { width: image.clientWidth, height: image.clientHeight }
   }
 
   return { width: 0, height: 0 }
@@ -412,31 +518,40 @@ async function naturalDimensionsForImage(image: HTMLImageElement): Promise<{
   naturalWidth: number
   naturalHeight: number
 }> {
-  let naturalWidth = image.naturalWidth
-  let naturalHeight = image.naturalHeight
-  if (naturalWidth > 0 && naturalHeight > 0) {
-    return { naturalWidth, naturalHeight }
-  }
-
   const src = image.currentSrc || image.src
   if (!src || src.startsWith('/monet')) {
     return { naturalWidth: 0, naturalHeight: 0 }
   }
 
-  await waitForImageLoad(image)
-  naturalWidth = image.naturalWidth
-  naturalHeight = image.naturalHeight
-  if (naturalWidth > 0 && naturalHeight > 0) {
-    return { naturalWidth, naturalHeight }
+  const probeSrc = originalAssetUrl(src)
+  const isProxied = probeSrc !== src
+
+  if (isSvgUrl(probeSrc)) {
+    const svg = await probeSvgDimensions(probeSrc)
+    if (svg.naturalWidth > 0 && svg.naturalHeight > 0) {
+      return svg
+    }
   }
 
-  const probed = await probeNaturalSize(src)
+  const probed = await probeNaturalSize(probeSrc)
   if (probed.naturalWidth > 0 && probed.naturalHeight > 0) {
     return probed
   }
 
-  if (/\.svg(?:$|[?#])/i.test(src)) {
-    return probeSvgDimensions(src)
+  // Proxied src may already be a Monet JPEG — do not trust element natural dimensions.
+  if (!isProxied) {
+    let naturalWidth = image.naturalWidth
+    let naturalHeight = image.naturalHeight
+    if (naturalWidth > 0 && naturalHeight > 0) {
+      return { naturalWidth, naturalHeight }
+    }
+
+    await waitForImageLoad(image)
+    naturalWidth = image.naturalWidth
+    naturalHeight = image.naturalHeight
+    if (naturalWidth > 0 && naturalHeight > 0) {
+      return { naturalWidth, naturalHeight }
+    }
   }
 
   return probed
@@ -478,7 +593,7 @@ export async function dimensionsForBackgroundElement(
   const natural = { naturalWidth: 0, naturalHeight: 0 }
   const bgUrl = parseBackgroundImageUrl(element)
   if (bgUrl && !bgUrl.startsWith('/monet')) {
-    Object.assign(natural, await probeNaturalSize(bgUrl))
+    Object.assign(natural, await probeNaturalSize(originalAssetUrl(bgUrl)))
   }
 
   return resolveImageDimensions({
@@ -568,18 +683,17 @@ function applyMonetImageLayout(
   if ((cssWidth > 0 || attrWidth > 0) && (cssHeight > 0 || attrHeight > 0)) {
     image.style.width = `${width}px`
     image.style.height = `${height}px`
+    image.style.objectFit = 'contain'
   } else if (cssHeight > 0 || attrHeight > 0) {
     image.style.width = 'auto'
     image.style.height = `${height}px`
+    image.style.objectFit = 'contain'
   } else if (cssWidth > 0 || attrWidth > 0) {
     image.style.width = `${width}px`
     image.style.height = 'auto'
-  } else {
-    image.style.width = `${width}px`
-    image.style.height = `${height}px`
+    image.style.objectFit = 'contain'
   }
-
-  image.style.objectFit = 'contain'
+  // No explicit constraints — leave sizing to the page stylesheet.
 }
 
 function replaceImage(image: HTMLImageElement, index: number): void {

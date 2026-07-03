@@ -3,6 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import {
+  originalAssetUrl,
   resolveImageDimensions,
 } from '../../src/proxy/client/unblocker-client'
 
@@ -76,6 +77,42 @@ describe('resolveImageDimensions', () => {
         naturalHeight: 1080,
       }),
     ).toEqual({ width: 114, height: 64 })
+  })
+})
+
+describe('originalAssetUrl', () => {
+  test('strips path-only proxy prefix and cookie query param', () => {
+    expect(
+      originalAssetUrl(
+        '/proxy/https://greens.org.au/themes/greens/logo.svg?__proxy_cookies_to=https%3A%2F%2Fcdn.example%2Flogo.svg',
+      ),
+    ).toBe('https://greens.org.au/themes/greens/logo.svg')
+  })
+
+  test('strips absolute proxy URL on local dev host', () => {
+    expect(
+      originalAssetUrl(
+        'http://localhost:1340/proxy/https://greens.org.au/cdn/logo.svg?__proxy_cookies_to=x',
+      ),
+    ).toBe('https://greens.org.au/cdn/logo.svg')
+  })
+
+  test('strips absolute proxy URL on production host', () => {
+    expect(
+      originalAssetUrl(
+        'https://www.monetiseyourwebsite.com/proxy/https://greens.org.au/logo.svg',
+      ),
+    ).toBe('https://greens.org.au/logo.svg')
+  })
+
+  test('returns upstream URL unchanged when not proxied', () => {
+    expect(originalAssetUrl('https://cdn.greens.org.au/logo.svg')).toBe(
+      'https://cdn.greens.org.au/logo.svg',
+    )
+  })
+
+  test('leaves monet URLs unchanged', () => {
+    expect(originalAssetUrl('/monet/70w60h42')).toBe('/monet/70w60h42')
   })
 })
 
