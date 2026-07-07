@@ -10,7 +10,36 @@ import catalog from '../data/smugmug-monet.json'
 /** How many closest-aspect-ratio paintings to draw from before picking at random. */
 export const ASPECT_RATIO_CANDIDATE_POOL_SIZE = 20
 
-export type SmugMugSize = 'Ti' | 'Th' | 'S' | 'M' | 'L' | 'XL' | 'X2' | 'X3' // | 'X4' | 'X5' | '4k' | '5k' | 'O'
+export type SmugMugSize = 'Ti' | 'Th' | 'S' | 'M' | 'L' | 'XL' | 'X2' | 'X3' | 'X4' | 'X5' | '4k' | '5k' | 'O'
+
+/** Largest SmugMug tier served to browsers (bandwidth / CDN cost cap). */
+export const MAX_SMUGMUG_SERVE_SIZE: SmugMugSize = 'X2'
+
+const SMUGMUG_SIZE_ORDER: readonly SmugMugSize[] = [
+  'Ti',
+  'Th',
+  'S',
+  'M',
+  'L',
+  'XL',
+  'X2',
+  'X3',
+  'X4',
+  'X5',
+  '4k',
+  '5k',
+  'O',
+]
+
+/** Cap a tier to {@link MAX_SMUGMUG_SERVE_SIZE} for outbound CDN URLs. */
+export function clampSmugMugSize(size: SmugMugSize): SmugMugSize {
+  const sizeIndex = SMUGMUG_SIZE_ORDER.indexOf(size)
+  const maxIndex = SMUGMUG_SIZE_ORDER.indexOf(MAX_SMUGMUG_SERVE_SIZE)
+  if (sizeIndex < 0 || maxIndex < 0) {
+    return MAX_SMUGMUG_SERVE_SIZE
+  }
+  return SMUGMUG_SIZE_ORDER[Math.min(sizeIndex, maxIndex)]
+}
 
 /** Parsed components of a SmugMug photos.smugmug.com embed URL. */
 export interface SmugMugPhotoUrlParts {
@@ -127,22 +156,23 @@ export function buildSmugMugPhotoUrl(
     fileSize?: SmugMugSize
   },
 ): string {
-  const fileSize = parts.fileSize ?? parts.pathSize
+  const pathSize = clampSmugMugSize(parts.pathSize)
+  const fileSize = clampSmugMugSize(parts.fileSize ?? parts.pathSize)
   return (
     `https://photos.smugmug.com/photos/${parts.photoId}/${parts.revision}/${parts.hash}/` +
-    `${parts.pathSize}/${parts.photoId}-${fileSize}.${parts.ext}`
+    `${pathSize}/${parts.photoId}-${fileSize}.${parts.ext}`
   )
 }
 
-/** Smallest SmugMug tier whose long edge is at least the requested pixel count. */
+/** Smallest SmugMug tier whose long edge is at least the requested pixel count (capped at {@link MAX_SMUGMUG_SERVE_SIZE}). */
 export function smugMugSizeForLongEdge(px: number): SmugMugSize {
   const edge = Math.max(1, Math.ceil(px))
   for (const tier of SIZE_FOR_LONG_EDGE) {
     if (edge <= tier.maxLongEdge) {
-      return tier.size
+      return clampSmugMugSize(tier.size)
     }
   }
-  return 'O'
+  return MAX_SMUGMUG_SERVE_SIZE
 }
 
 /** Pick a display size from width × height (uses the longer edge). */
@@ -151,7 +181,7 @@ export function smugMugSizeForBox(width: number, height: number, fallback: SmugM
   const h = Number.isFinite(height) ? height : 0
   const longEdge = Math.max(w, h)
   if (longEdge <= 0) {
-    return fallback
+    return clampSmugMugSize(fallback)
   }
   return smugMugSizeForLongEdge(longEdge)
 }

@@ -2,6 +2,8 @@ import { describe, expect, test } from 'bun:test'
 import {
   ASPECT_RATIO_CANDIDATE_POOL_SIZE,
   buildSmugMugPhotoUrl,
+  clampSmugMugSize,
+  MAX_SMUGMUG_SERVE_SIZE,
   monetAlbumKey,
   monetPaintingUrl,
   monetPaintings,
@@ -114,12 +116,35 @@ describe('smugMugSizeForLongEdge', () => {
     expect(smugMugSizeForLongEdge(600)).toBe('M')
     expect(smugMugSizeForLongEdge(900)).toBe('XL')
   })
+
+  test('caps oversized requests at MAX_SMUGMUG_SERVE_SIZE', () => {
+    expect(MAX_SMUGMUG_SERVE_SIZE).toBe('X2')
+    expect(smugMugSizeForLongEdge(1500)).toBe('X2')
+    expect(smugMugSizeForLongEdge(4000)).toBe('X2')
+  })
+})
+
+describe('clampSmugMugSize', () => {
+  test('passes through tiers at or below the serve cap', () => {
+    expect(clampSmugMugSize('M')).toBe('M')
+    expect(clampSmugMugSize('X2')).toBe('X2')
+  })
+
+  test('clamps tiers above the serve cap', () => {
+    expect(clampSmugMugSize('X3')).toBe('X2')
+    expect(clampSmugMugSize('5k')).toBe('X2')
+    expect(clampSmugMugSize('O')).toBe('X2')
+  })
 })
 
 describe('smugMugSizeForBox', () => {
   test('uses the longer of width and height', () => {
     expect(smugMugSizeForBox(300, 200)).toBe('S')
     expect(smugMugSizeForBox(200, 700)).toBe('L')
+  })
+
+  test('caps large boxes at MAX_SMUGMUG_SERVE_SIZE', () => {
+    expect(smugMugSizeForBox(3840, 2160)).toBe('X2')
   })
 })
 
@@ -134,6 +159,11 @@ describe('monetPaintingUrl', () => {
     const a = monetPaintingUrl({ seed: 99, width: 640, height: 480 })
     const b = monetPaintingUrl({ seed: 99, width: 640, height: 480 })
     expect(a).toBe(b)
+  })
+
+  test('clamps explicit size above MAX_SMUGMUG_SERVE_SIZE', () => {
+    const url = monetPaintingUrl({ seed: 1, size: 'O' })
+    expect(url).toMatch(/\/X2\/i-[A-Za-z0-9]+-X2\.jpg$/)
   })
 })
 
