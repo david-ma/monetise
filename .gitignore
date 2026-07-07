@@ -7,3 +7,5 @@ city.mmdb
 data/Monet
 data
 !data/smugmug-monet.json
+!tmp/logs/.gitkeep
+tmp

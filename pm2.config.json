@@ -1,0 +1,19 @@
+{
+  "apps": [
+    {
+      "name": "monetise",
+      "cwd": "/usr/local/dev/monetise",
+      "script": "bun",
+      "args": "start",
+      "env": {
+        "NODE_ENV": "production",
+        "PORT": 7777,
+        "NODE_OPTIONS": "--max_http_header_size=65536"
+      },
+      "error_file": "/usr/local/dev/monetise/tmp/logs/pm2-error.log",
+      "out_file": "/usr/local/dev/monetise/tmp/logs/pm2-out.log",
+      "log_date_format": "YYYY-MM-DD HH:mm:ss",
+      "merge_logs": true
+    }
+  ]
+}
