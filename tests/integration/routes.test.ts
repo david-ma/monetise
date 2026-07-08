@@ -91,4 +91,30 @@ describeDatabaseOnline('monetise HTTP routes', () => {
     const js = await res.text()
     expect(js).toContain('monetiseAllImages')
   })
+
+  test('GET /proxy/https:/// blocks empty-host SSRF', async () => {
+    const res = await fetchFromServer(
+      '/proxy/https:///?rest_route=/gravitysmtp/v1/tests/mock-data&page=gravitysmtp-settings',
+      port,
+      { headers: { cookie: 'monetiseVisitor=1' }, redirect: 'manual' },
+    )
+    expect(res.status).toBe(403)
+    expect(await res.text()).toBe('403 Not allowed')
+  })
+
+  test('GET /proxy/https://localhost/ blocks localhost', async () => {
+    const res = await fetchFromServer('/proxy/https://localhost/', port, {
+      headers: { cookie: 'monetiseVisitor=1' },
+      redirect: 'manual',
+    })
+    expect(res.status).toBe(403)
+  })
+
+  test('GET /proxy/https://127.0.0.1/ blocks loopback IP', async () => {
+    const res = await fetchFromServer('/proxy/https://127.0.0.1/', port, {
+      headers: { cookie: 'monetiseVisitor=1' },
+      redirect: 'manual',
+    })
+    expect(res.status).toBe(403)
+  })
 })

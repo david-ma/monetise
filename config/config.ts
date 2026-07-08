@@ -10,6 +10,7 @@ import maxmind, { type CityResponse } from 'maxmind'
 import Handlebars from 'handlebars'
 
 import { monetPaintingUrl, parseMonetRequestPath } from './assets'
+import { rejectProxyRequest } from './proxy-target'
 import { downloadCitiesData } from './mmdb'
 import { paintings, sites, siteVisitors, visitors as visitorsTable } from '../models/schema'
 import { getAllSites, getVisitorsWithSites, recordSiteVisit, type MonetiseDb } from '../models/queries'
@@ -50,6 +51,15 @@ function serveFile(res: ServerResponse, absolutePath: string): void {
 
 function setVisitorCookie(res: ServerResponse): void {
   res.setHeader('Set-Cookie', 'monetiseVisitor=1; Path=/; SameSite=Lax')
+}
+
+function rejectBlockedProxyTarget(res: ServerResponse, reqUrl: string): boolean {
+  const reason = rejectProxyRequest(reqUrl)
+  if (!reason) return false
+  console.log('Blocked proxy target:', reason, reqUrl)
+  res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' })
+  res.end('403 Not allowed')
+  return true
 }
 
 function monetiseDb(website: Website): MonetiseDb | null {
@@ -98,6 +108,8 @@ const homepage: Controller = (res, req, website, requestInfo) => {
       url = `https://${url}`
     }
 
+    if (rejectBlockedProxyTarget(res, `/proxy/${url}`)) return
+
     console.log('IP', requestInfo.ip)
 
     siteVisit(website, req, requestInfo.ip, req.headers['user-agent'])
@@ -136,24 +148,7 @@ const proxy: Controller = (res, req, website, requestInfo) => {
   const sections = url.split('/proxy/')
   url = req.url = `${sections[0]}/proxy/${sections.pop()}`
 
-  let base: string
-  try {
-    base = url.split('//')[1] ?? ''
-    base = base.split('/')[0] ?? ''
-    base = base.split(':')[0] ?? ''
-  } catch {
-    res.end("500 Error, couldn't read target host")
-    return
-  }
-
-  const ipAddressRegex = /(\d+\.?){4}/
-
-  if (ipAddressRegex.test(base)) {
-    console.log('IP Address found!', base)
-    console.log('Full URL', url)
-    res.end('401 Error, Not allowed to visit IP addresses')
-    return
-  }
+  if (rejectBlockedProxyTarget(res, url)) return
 
   const cookies = requestInfo.cookies
 
@@ -178,7 +173,9 @@ const proxy: Controller = (res, req, website, requestInfo) => {
       console.error('Proxy error:', req.url, err)
       if (!res.headersSent) {
         res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' })
-        res.end(`Proxy error: ${err.message}`)
+        const detail =
+          requestInfo.node_env === 'development' ? `: ${err.message}` : ''
+        res.end(`Proxy error${detail}`)
       }
     })
   }
