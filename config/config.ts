@@ -6,7 +6,6 @@ import { Transform } from 'stream'
 import type { IncomingMessage, ServerResponse } from 'http'
 
 import type { RawWebsiteConfig, Controller, Website } from 'thalia'
-import type { RequestInfo } from 'thalia/server'
 import maxmind, { type CityResponse } from 'maxmind'
 import Handlebars from 'handlebars'
 

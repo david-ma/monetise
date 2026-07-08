@@ -3,6 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import {
+  explicitLayoutSize,
   originalAssetUrl,
   resolveImageDimensions,
 } from '../../src/proxy/client/unblocker-client'
@@ -77,6 +78,76 @@ describe('resolveImageDimensions', () => {
         naturalHeight: 1080,
       }),
     ).toEqual({ width: 114, height: 64 })
+  })
+})
+
+describe('explicitLayoutSize', () => {
+  test('discards computed size that merely echoes the loaded Monet painting (unconstrained logo)', () => {
+    // Real logo is 70x60, but the proxied <img> loaded a 674x600 painting, so an
+    // unconstrained (auto) axis reports the painting size via getComputedStyle.
+    expect(
+      explicitLayoutSize({
+        computedWidth: 674,
+        computedHeight: 600,
+        attrWidth: 0,
+        attrHeight: 0,
+        intrinsicWidth: 674,
+        intrinsicHeight: 600,
+      }),
+    ).toEqual({ width: 0, height: 0 })
+  })
+
+  test('keeps genuine CSS constraints that differ from the loaded resource', () => {
+    expect(
+      explicitLayoutSize({
+        computedWidth: 120,
+        computedHeight: 80,
+        attrWidth: 0,
+        attrHeight: 0,
+        intrinsicWidth: 674,
+        intrinsicHeight: 600,
+      }),
+    ).toEqual({ width: 120, height: 80 })
+  })
+
+  test('keeps a one-sided constraint while dropping the intrinsic-driven axis', () => {
+    // Tailwind h-6 style: explicit height, width auto (echoes painting width).
+    expect(
+      explicitLayoutSize({
+        computedWidth: 674,
+        computedHeight: 24,
+        attrWidth: 0,
+        attrHeight: 0,
+        intrinsicWidth: 674,
+        intrinsicHeight: 600,
+      }),
+    ).toEqual({ width: 0, height: 24 })
+  })
+
+  test('treats HTML width/height attributes as explicit constraints', () => {
+    expect(
+      explicitLayoutSize({
+        computedWidth: 0,
+        computedHeight: 0,
+        attrWidth: 200,
+        attrHeight: 150,
+        intrinsicWidth: 0,
+        intrinsicHeight: 0,
+      }),
+    ).toEqual({ width: 200, height: 150 })
+  })
+
+  test('returns zero when there are no constraints and no loaded resource', () => {
+    expect(
+      explicitLayoutSize({
+        computedWidth: 0,
+        computedHeight: 0,
+        attrWidth: 0,
+        attrHeight: 0,
+        intrinsicWidth: 0,
+        intrinsicHeight: 0,
+      }),
+    ).toEqual({ width: 0, height: 0 })
   })
 })
 

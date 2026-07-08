@@ -43,6 +43,14 @@
  *      the page stylesheet already produces, and we should not bake that into
  *      inline styles unnecessarily.
  *
+ *      Note getComputedStyle().width/height returns the *used* value in px, which
+ *      for a replaced element with an `auto` axis is the intrinsic size of the
+ *      currently loaded resource. Since the proxied <img> already loaded a Monet
+ *      painting, that leaks the painting's size (e.g. 674×600) as if it were a
+ *      page constraint. explicitLayoutSize() discards any axis whose computed size
+ *      matches the current resource's intrinsic size, so only genuine CSS/attribute
+ *      constraints survive.
+ *
  *   2. Intrinsic size (naturalDimensionsForImage) — probes use originalAssetUrl()
  *      to fetch from the upstream site directly, bypassing our proxy's monet redirect
  *      (which would return a full-size JPEG and corrupt dimensions). For .svg URLs,
@@ -443,22 +451,58 @@ function readHtmlDimensionAttr(image: HTMLImageElement, name: 'width' | 'height'
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0
 }
 
-/** Explicit layout constraints only — CSS width/height or HTML attributes, not rendered box. */
+/**
+ * An axis is "intrinsic driven" when its computed used size matches the currently
+ * loaded resource's natural size on that axis. That happens when the page leaves the
+ * axis as `auto`, so the browser falls back to the resource's intrinsic size. Because
+ * the proxied <img> has already loaded a Monet painting, that intrinsic size is the
+ * painting's — not a page-authored constraint — and must not be baked into the layout.
+ */
+function isIntrinsicDriven(computed: number, intrinsic: number): boolean {
+  return intrinsic > 0 && computed > 0 && Math.abs(computed - intrinsic) <= 1
+}
+
+export type LayoutSizeInput = {
+  computedWidth: number
+  computedHeight: number
+  attrWidth: number
+  attrHeight: number
+  intrinsicWidth: number
+  intrinsicHeight: number
+}
+
+/**
+ * Resolve the page's explicit layout constraints, discarding computed values that are
+ * merely the intrinsic size of the loaded resource (a proxied Monet painting) leaking
+ * through an `auto` axis. HTML width/height attributes are always explicit.
+ */
+export function explicitLayoutSize(input: LayoutSizeInput): { width: number; height: number } {
+  let width = isIntrinsicDriven(input.computedWidth, input.intrinsicWidth) ? 0 : input.computedWidth
+  let height = isIntrinsicDriven(input.computedHeight, input.intrinsicHeight)
+    ? 0
+    : input.computedHeight
+
+  if (width <= 0 && input.attrWidth > 0) {
+    width = input.attrWidth
+  }
+  if (height <= 0 && input.attrHeight > 0) {
+    height = input.attrHeight
+  }
+
+  return { width: width > 0 ? width : 0, height: height > 0 ? height : 0 }
+}
+
+/** Read the page's explicit width/height constraints for an image from the live DOM. */
 export function layoutDimensionsForImage(image: HTMLImageElement): { width: number; height: number } {
   const style = window.getComputedStyle(image)
-  const width = parseCssLength(style.width, image)
-  const height = parseCssLength(style.height, image)
-  if (width > 0 || height > 0) {
-    return { width, height }
-  }
-
-  const attrWidth = readHtmlDimensionAttr(image, 'width')
-  const attrHeight = readHtmlDimensionAttr(image, 'height')
-  if (attrWidth > 0 || attrHeight > 0) {
-    return { width: attrWidth, height: attrHeight }
-  }
-
-  return { width: 0, height: 0 }
+  return explicitLayoutSize({
+    computedWidth: parseCssLength(style.width, image),
+    computedHeight: parseCssLength(style.height, image),
+    attrWidth: readHtmlDimensionAttr(image, 'width'),
+    attrHeight: readHtmlDimensionAttr(image, 'height'),
+    intrinsicWidth: image.naturalWidth,
+    intrinsicHeight: image.naturalHeight,
+  })
 }
 
 async function probeSvgDimensions(src: string): Promise<{ naturalWidth: number; naturalHeight: number }> {
@@ -514,17 +558,37 @@ function waitForImageLoad(image: HTMLImageElement): Promise<void> {
   })
 }
 
+/** Attribute where we stash the upstream asset URL before overwriting src with a Monet painting. */
+const ORIGINAL_SRC_ATTR = 'originalSrc'
+
+/**
+ * Record the un-proxied upstream asset URL so later passes (and dimension probes)
+ * can read the real image URL instead of reverse-engineering it from a src that
+ * has already been swapped for a /monet painting.
+ */
+function rememberOriginalSrc(image: HTMLImageElement): void {
+  if (image.getAttribute(ORIGINAL_SRC_ATTR)) {
+    return
+  }
+  const src = image.currentSrc || image.src
+  if (!src || src.startsWith('/monet')) {
+    return
+  }
+  image.setAttribute(ORIGINAL_SRC_ATTR, originalAssetUrl(src))
+}
+
 async function naturalDimensionsForImage(image: HTMLImageElement): Promise<{
   naturalWidth: number
   naturalHeight: number
 }> {
-  const src = image.currentSrc || image.src
-  if (!src || src.startsWith('/monet')) {
+  const elementSrc = image.currentSrc || image.src
+  const stored = image.getAttribute(ORIGINAL_SRC_ATTR)
+  const probeSrc = stored || (elementSrc ? originalAssetUrl(elementSrc) : '')
+  if (!probeSrc || probeSrc.startsWith('/monet')) {
     return { naturalWidth: 0, naturalHeight: 0 }
   }
 
-  const probeSrc = originalAssetUrl(src)
-  const isProxied = probeSrc !== src
+  const isProxied = probeSrc !== elementSrc
 
   if (isSvgUrl(probeSrc)) {
     const svg = await probeSvgDimensions(probeSrc)
@@ -669,26 +733,26 @@ function applyMonetImageLayout(
   height: number,
   url: string,
 ): void {
-  const style = window.getComputedStyle(image)
-  const cssWidth = parseCssLength(style.width, image)
-  const cssHeight = parseCssLength(style.height, image)
-  const attrWidth = readHtmlDimensionAttr(image, 'width')
-  const attrHeight = readHtmlDimensionAttr(image, 'height')
+  // Read constraints before swapping src, while the element still reflects the
+  // previously loaded resource (so intrinsic-size leakage can be filtered out).
+  const constraint = layoutDimensionsForImage(image)
+  const hasWidth = constraint.width > 0
+  const hasHeight = constraint.height > 0
 
   image.src = url
   image.srcset = url
   image.setAttribute('monetised', 'true')
 
   // Respect one-sided CSS constraints (e.g. Tailwind h-6) instead of forcing both axes.
-  if ((cssWidth > 0 || attrWidth > 0) && (cssHeight > 0 || attrHeight > 0)) {
+  if (hasWidth && hasHeight) {
     image.style.width = `${width}px`
     image.style.height = `${height}px`
     image.style.objectFit = 'contain'
-  } else if (cssHeight > 0 || attrHeight > 0) {
+  } else if (hasHeight) {
     image.style.width = 'auto'
     image.style.height = `${height}px`
     image.style.objectFit = 'contain'
-  } else if (cssWidth > 0 || attrWidth > 0) {
+  } else if (hasWidth) {
     image.style.width = `${width}px`
     image.style.height = 'auto'
     image.style.objectFit = 'contain'
@@ -701,6 +765,7 @@ function replaceImage(image: HTMLImageElement, index: number): void {
     return
   }
 
+  rememberOriginalSrc(image)
   image.setAttribute('monetising', 'true')
   const seed = Math.floor(Math.random() * 10000) + index + 1
 

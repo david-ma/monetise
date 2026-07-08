@@ -46,6 +46,7 @@
     monetiseAllImages: () => monetiseAllImages,
     layoutDimensionsForImage: () => layoutDimensionsForImage,
     initForWindow: () => initForWindow,
+    explicitLayoutSize: () => explicitLayoutSize,
     dimensionsForImageElement: () => dimensionsForImageElement,
     dimensionsForBackgroundElement: () => dimensionsForBackgroundElement
   });
@@ -323,19 +324,30 @@
     const parsed = parseInt(attr, 10);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
   }
+  function isIntrinsicDriven(computed, intrinsic) {
+    return intrinsic > 0 && computed > 0 && Math.abs(computed - intrinsic) <= 1;
+  }
+  function explicitLayoutSize(input) {
+    let width = isIntrinsicDriven(input.computedWidth, input.intrinsicWidth) ? 0 : input.computedWidth;
+    let height = isIntrinsicDriven(input.computedHeight, input.intrinsicHeight) ? 0 : input.computedHeight;
+    if (width <= 0 && input.attrWidth > 0) {
+      width = input.attrWidth;
+    }
+    if (height <= 0 && input.attrHeight > 0) {
+      height = input.attrHeight;
+    }
+    return { width: width > 0 ? width : 0, height: height > 0 ? height : 0 };
+  }
   function layoutDimensionsForImage(image) {
     const style = window.getComputedStyle(image);
-    const width = parseCssLength(style.width, image);
-    const height = parseCssLength(style.height, image);
-    if (width > 0 || height > 0) {
-      return { width, height };
-    }
-    const attrWidth = readHtmlDimensionAttr(image, "width");
-    const attrHeight = readHtmlDimensionAttr(image, "height");
-    if (attrWidth > 0 || attrHeight > 0) {
-      return { width: attrWidth, height: attrHeight };
-    }
-    return { width: 0, height: 0 };
+    return explicitLayoutSize({
+      computedWidth: parseCssLength(style.width, image),
+      computedHeight: parseCssLength(style.height, image),
+      attrWidth: readHtmlDimensionAttr(image, "width"),
+      attrHeight: readHtmlDimensionAttr(image, "height"),
+      intrinsicWidth: image.naturalWidth,
+      intrinsicHeight: image.naturalHeight
+    });
   }
   async function probeSvgDimensions(src) {
     try {
@@ -382,13 +394,25 @@
       image.addEventListener("error", () => resolve(), { once: true });
     });
   }
-  async function naturalDimensionsForImage(image) {
+  var ORIGINAL_SRC_ATTR = "originalSrc";
+  function rememberOriginalSrc(image) {
+    if (image.getAttribute(ORIGINAL_SRC_ATTR)) {
+      return;
+    }
     const src = image.currentSrc || image.src;
     if (!src || src.startsWith("/monet")) {
+      return;
+    }
+    image.setAttribute(ORIGINAL_SRC_ATTR, originalAssetUrl(src));
+  }
+  async function naturalDimensionsForImage(image) {
+    const elementSrc = image.currentSrc || image.src;
+    const stored = image.getAttribute(ORIGINAL_SRC_ATTR);
+    const probeSrc = stored || (elementSrc ? originalAssetUrl(elementSrc) : "");
+    if (!probeSrc || probeSrc.startsWith("/monet")) {
       return { naturalWidth: 0, naturalHeight: 0 };
     }
-    const probeSrc = originalAssetUrl(src);
-    const isProxied = probeSrc !== src;
+    const isProxied = probeSrc !== elementSrc;
     if (isSvgUrl(probeSrc)) {
       const svg = await probeSvgDimensions(probeSrc);
       if (svg.naturalWidth > 0 && svg.naturalHeight > 0) {
@@ -500,23 +524,21 @@
     });
   }
   function applyMonetImageLayout(image, width, height, url) {
-    const style = window.getComputedStyle(image);
-    const cssWidth = parseCssLength(style.width, image);
-    const cssHeight = parseCssLength(style.height, image);
-    const attrWidth = readHtmlDimensionAttr(image, "width");
-    const attrHeight = readHtmlDimensionAttr(image, "height");
+    const constraint = layoutDimensionsForImage(image);
+    const hasWidth = constraint.width > 0;
+    const hasHeight = constraint.height > 0;
     image.src = url;
     image.srcset = url;
     image.setAttribute("monetised", "true");
-    if ((cssWidth > 0 || attrWidth > 0) && (cssHeight > 0 || attrHeight > 0)) {
+    if (hasWidth && hasHeight) {
       image.style.width = `${width}px`;
       image.style.height = `${height}px`;
       image.style.objectFit = "contain";
-    } else if (cssHeight > 0 || attrHeight > 0) {
+    } else if (hasHeight) {
       image.style.width = "auto";
       image.style.height = `${height}px`;
       image.style.objectFit = "contain";
-    } else if (cssWidth > 0 || attrWidth > 0) {
+    } else if (hasWidth) {
       image.style.width = `${width}px`;
       image.style.height = "auto";
       image.style.objectFit = "contain";
@@ -526,6 +548,7 @@
     if (image.getAttribute("monetised") || image.getAttribute("monetising")) {
       return;
     }
+    rememberOriginalSrc(image);
     image.setAttribute("monetising", "true");
     const seed = Math.floor(Math.random() * 1e4) + index + 1;
     dimensionsForImageElement(image).then(({ width, height }) => {
