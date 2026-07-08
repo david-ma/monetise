@@ -300,6 +300,12 @@ const config: RawWebsiteConfig = {
     visitors: visitorsPage,
     geoip,
   },
+  routes: [
+    {
+      path: '/visitors',
+      password: process.env.VISITORS_PASSWORD || 'hunter2',
+    }
+  ]
 }
 
 export { config }
