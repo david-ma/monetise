@@ -69,11 +69,9 @@ describeDatabaseOnline('monetise HTTP routes', () => {
     expect(location).toMatch(/\/S\/i-[A-Za-z0-9]+-S\.jpg$/)
   })
 
-  test('GET /visitors responds when database is unavailable', async () => {
+  test('GET /visitors is password protected', async () => {
     const res = await fetchFromServer('/visitors', port)
-    expect(res.status).toBe(200)
-    const text = await res.text()
-    expect(text === 'Database unavailable' || text.includes('<table>')).toBe(true)
+    expect(res.status).toBe(401)
   })
 
   test('GET /robots.txt disallows the proxy path', async () => {

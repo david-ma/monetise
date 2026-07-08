@@ -24,7 +24,7 @@ export function proxyHostnameFromRequest(reqUrl: string): string | null {
   return (parseUrl(raw).hostname ?? '').toLowerCase()
 }
 
-function proxyTargetRawFromRequest(reqUrl: string): string | null {
+export function proxyTargetRawFromRequest(reqUrl: string): string | null {
   const prefix = '/proxy/'
   const prefixIndex = reqUrl.indexOf(prefix)
   if (prefixIndex === -1) return null

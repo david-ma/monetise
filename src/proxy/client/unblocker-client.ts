@@ -668,34 +668,114 @@ export async function dimensionsForBackgroundElement(
   })
 }
 
-function monetUrl(width: number, height: number, seed: number): string {
-  return `/monet/${width}w${height}h${seed}`
+export const MONET_CLIENT_VERSION = '1.0.0'
+
+export type MonetisationStats = {
+  imagesScanned: number
+  imagesReplaced: number
+  backgroundsReplaced: number
+  canvasesReplaced: number
+  skippedAlreadyMonetised: number
+}
+
+const monetisationStats: MonetisationStats = {
+  imagesScanned: 0,
+  imagesReplaced: 0,
+  backgroundsReplaced: 0,
+  canvasesReplaced: 0,
+  skippedAlreadyMonetised: 0,
+}
+
+let reportScheduled = false
+let reportSent = false
+
+export function getMonetisationStats(): MonetisationStats {
+  return { ...monetisationStats }
+}
+
+export function resetMonetisationStats(): void {
+  monetisationStats.imagesScanned = 0
+  monetisationStats.imagesReplaced = 0
+  monetisationStats.backgroundsReplaced = 0
+  monetisationStats.canvasesReplaced = 0
+  monetisationStats.skippedAlreadyMonetised = 0
+  reportScheduled = false
+  reportSent = false
+}
+
+function navigationTimingMs(): { pageLoadMs?: number; domContentLoadedMs?: number } {
+  const entry = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
+  if (!entry) return {}
+  return {
+    pageLoadMs: Math.round(entry.loadEventEnd - entry.startTime),
+    domContentLoadedMs: Math.round(entry.domContentLoadedEventEnd - entry.startTime),
+  }
+}
+
+export function reportMonetisationOnce(): void {
+  if (reportSent || typeof window === 'undefined') return
+
+  const visit = (window as Window & { __MONETISE_VISIT__?: { token?: string } }).__MONETISE_VISIT__
+  if (!visit?.token) return
+
+  reportSent = true
+  const timing = navigationTimingMs()
+
+  void fetch('/visit-report', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      visitToken: visit.token,
+      pageUrl: window.location.href,
+      documentTitle: document.title,
+      timing,
+      monetisation: getMonetisationStats(),
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      signals: { webdriver: Boolean(navigator.webdriver) },
+      clientScriptVersion: MONET_CLIENT_VERSION,
+    }),
+    keepalive: true,
+  }).catch((error) => {
+    console.warn('Monetise visit report failed', error)
+    reportSent = false
+  })
+}
+
+export function scheduleMonetisationReport(): void {
+  if (reportScheduled || reportSent) return
+  reportScheduled = true
+  window.setTimeout(() => {
+    reportMonetisationOnce()
+  }, 2000)
 }
 
 export function monetiseAllImages(): void {
-  let count = 0
   const images = document.getElementsByTagName('img')
   for (let i = 0; i < images.length; i++) {
     replaceImage(images[i], i)
-    count++
   }
 
   const backgroundImages = document.querySelectorAll<HTMLElement>('[style*="background-image"]')
   for (let i = 0; i < backgroundImages.length; i++) {
     replaceBackgroundImage(backgroundImages[i], i)
-    count++
   }
 
   const canvases = document.getElementsByTagName('canvas')
   for (let i = 0; i < canvases.length; i++) {
     replaceCanvas(canvases[i])
-    count++
   }
-  console.log(`queued ${count} images for monetisation`)
+
+  scheduleMonetisationReport()
+}
+
+function monetUrl(width: number, height: number, seed: number): string {
+  return `/monet/${width}w${height}h${seed}`
 }
 
 function replaceCanvas(canvas: HTMLCanvasElement): void {
+  monetisationStats.imagesScanned++
   if (canvas.getAttribute('monetised') || canvas.getAttribute('monetising')) {
+    monetisationStats.skippedAlreadyMonetised++
     return
   }
 
@@ -703,10 +783,13 @@ function replaceCanvas(canvas: HTMLCanvasElement): void {
   canvas.style.backgroundImage = 'url(/monet)'
   canvas.setAttribute('monetised', 'true')
   canvas.removeAttribute('monetising')
+  monetisationStats.canvasesReplaced++
 }
 
 function replaceBackgroundImage(element: HTMLElement, index: number): void {
+  monetisationStats.imagesScanned++
   if (element.getAttribute('monetised') || element.getAttribute('monetising')) {
+    monetisationStats.skippedAlreadyMonetised++
     return
   }
 
@@ -717,10 +800,12 @@ function replaceBackgroundImage(element: HTMLElement, index: number): void {
     .then(({ width, height }) => {
       element.style.backgroundImage = `url(${monetUrl(width, height, seed)})`
       element.setAttribute('monetised', 'true')
+      monetisationStats.backgroundsReplaced++
     })
     .catch(() => {
       element.style.backgroundImage = `url(${monetUrl(FALLBACK_WIDTH, FALLBACK_HEIGHT, seed)})`
       element.setAttribute('monetised', 'true')
+      monetisationStats.backgroundsReplaced++
     })
     .finally(() => {
       element.removeAttribute('monetising')
@@ -761,7 +846,9 @@ function applyMonetImageLayout(
 }
 
 function replaceImage(image: HTMLImageElement, index: number): void {
+  monetisationStats.imagesScanned++
   if (image.getAttribute('monetised') || image.getAttribute('monetising')) {
+    monetisationStats.skippedAlreadyMonetised++
     return
   }
 
@@ -772,6 +859,7 @@ function replaceImage(image: HTMLImageElement, index: number): void {
   void dimensionsForImageElement(image)
     .then(({ width, height }) => {
       applyMonetImageLayout(image, width, height, monetUrl(width, height, seed))
+      monetisationStats.imagesReplaced++
     })
     .catch(() => {
       applyMonetImageLayout(
@@ -780,6 +868,7 @@ function replaceImage(image: HTMLImageElement, index: number): void {
         FALLBACK_HEIGHT,
         monetUrl(FALLBACK_WIDTH, FALLBACK_HEIGHT, seed),
       )
+      monetisationStats.imagesReplaced++
     })
     .finally(() => {
       image.removeAttribute('monetising')

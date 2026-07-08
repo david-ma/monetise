@@ -40,15 +40,20 @@
   // src/proxy/client/unblocker-client.ts
   var exports_unblocker_client = {};
   __export(exports_unblocker_client, {
+    scheduleMonetisationReport: () => scheduleMonetisationReport,
     resolveImageDimensions: () => resolveImageDimensions,
+    resetMonetisationStats: () => resetMonetisationStats,
+    reportMonetisationOnce: () => reportMonetisationOnce,
     parseCssLength: () => parseCssLength,
     originalAssetUrl: () => originalAssetUrl,
     monetiseAllImages: () => monetiseAllImages,
     layoutDimensionsForImage: () => layoutDimensionsForImage,
     initForWindow: () => initForWindow,
+    getMonetisationStats: () => getMonetisationStats,
     explicitLayoutSize: () => explicitLayoutSize,
     dimensionsForImageElement: () => dimensionsForImageElement,
-    dimensionsForBackgroundElement: () => dimensionsForBackgroundElement
+    dimensionsForBackgroundElement: () => dimensionsForBackgroundElement,
+    MONET_CLIENT_VERSION: () => MONET_CLIENT_VERSION
   });
   var banlist = ["posthog"];
   function fixUrl(urlStr, config, loc) {
@@ -476,39 +481,106 @@
       naturalHeight: natural.naturalHeight
     });
   }
-  function monetUrl(width, height, seed) {
-    return `/monet/${width}w${height}h${seed}`;
+  var MONET_CLIENT_VERSION = "1.0.0";
+  var monetisationStats = {
+    imagesScanned: 0,
+    imagesReplaced: 0,
+    backgroundsReplaced: 0,
+    canvasesReplaced: 0,
+    skippedAlreadyMonetised: 0
+  };
+  var reportScheduled = false;
+  var reportSent = false;
+  function getMonetisationStats() {
+    return { ...monetisationStats };
+  }
+  function resetMonetisationStats() {
+    monetisationStats.imagesScanned = 0;
+    monetisationStats.imagesReplaced = 0;
+    monetisationStats.backgroundsReplaced = 0;
+    monetisationStats.canvasesReplaced = 0;
+    monetisationStats.skippedAlreadyMonetised = 0;
+    reportScheduled = false;
+    reportSent = false;
+  }
+  function navigationTimingMs() {
+    const entry = performance.getEntriesByType("navigation")[0];
+    if (!entry)
+      return {};
+    return {
+      pageLoadMs: Math.round(entry.loadEventEnd - entry.startTime),
+      domContentLoadedMs: Math.round(entry.domContentLoadedEventEnd - entry.startTime)
+    };
+  }
+  function reportMonetisationOnce() {
+    if (reportSent || typeof window === "undefined")
+      return;
+    const visit = window.__MONETISE_VISIT__;
+    if (!visit?.token)
+      return;
+    reportSent = true;
+    const timing = navigationTimingMs();
+    fetch("/visit-report", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        visitToken: visit.token,
+        pageUrl: window.location.href,
+        documentTitle: document.title,
+        timing,
+        monetisation: getMonetisationStats(),
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+        signals: { webdriver: Boolean(navigator.webdriver) },
+        clientScriptVersion: MONET_CLIENT_VERSION
+      }),
+      keepalive: true
+    }).catch((error) => {
+      console.warn("Monetise visit report failed", error);
+      reportSent = false;
+    });
+  }
+  function scheduleMonetisationReport() {
+    if (reportScheduled || reportSent)
+      return;
+    reportScheduled = true;
+    window.setTimeout(() => {
+      reportMonetisationOnce();
+    }, 2000);
   }
   function monetiseAllImages() {
-    let count = 0;
     const images = document.getElementsByTagName("img");
     for (let i = 0;i < images.length; i++) {
       replaceImage(images[i], i);
-      count++;
     }
     const backgroundImages = document.querySelectorAll('[style*="background-image"]');
     for (let i = 0;i < backgroundImages.length; i++) {
       replaceBackgroundImage(backgroundImages[i], i);
-      count++;
     }
     const canvases = document.getElementsByTagName("canvas");
     for (let i = 0;i < canvases.length; i++) {
       replaceCanvas(canvases[i]);
-      count++;
     }
-    console.log(`queued ${count} images for monetisation`);
+    scheduleMonetisationReport();
+  }
+  function monetUrl(width, height, seed) {
+    return `/monet/${width}w${height}h${seed}`;
   }
   function replaceCanvas(canvas) {
+    monetisationStats.imagesScanned++;
     if (canvas.getAttribute("monetised") || canvas.getAttribute("monetising")) {
+      monetisationStats.skippedAlreadyMonetised++;
       return;
     }
     canvas.setAttribute("monetising", "true");
     canvas.style.backgroundImage = "url(/monet)";
     canvas.setAttribute("monetised", "true");
     canvas.removeAttribute("monetising");
+    monetisationStats.canvasesReplaced++;
   }
   function replaceBackgroundImage(element, index) {
+    monetisationStats.imagesScanned++;
     if (element.getAttribute("monetised") || element.getAttribute("monetising")) {
+      monetisationStats.skippedAlreadyMonetised++;
       return;
     }
     element.setAttribute("monetising", "true");
@@ -516,9 +588,11 @@
     dimensionsForBackgroundElement(element).then(({ width, height }) => {
       element.style.backgroundImage = `url(${monetUrl(width, height, seed)})`;
       element.setAttribute("monetised", "true");
+      monetisationStats.backgroundsReplaced++;
     }).catch(() => {
       element.style.backgroundImage = `url(${monetUrl(FALLBACK_WIDTH, FALLBACK_HEIGHT, seed)})`;
       element.setAttribute("monetised", "true");
+      monetisationStats.backgroundsReplaced++;
     }).finally(() => {
       element.removeAttribute("monetising");
     });
@@ -545,7 +619,9 @@
     }
   }
   function replaceImage(image, index) {
+    monetisationStats.imagesScanned++;
     if (image.getAttribute("monetised") || image.getAttribute("monetising")) {
+      monetisationStats.skippedAlreadyMonetised++;
       return;
     }
     rememberOriginalSrc(image);
@@ -553,8 +629,10 @@
     const seed = Math.floor(Math.random() * 1e4) + index + 1;
     dimensionsForImageElement(image).then(({ width, height }) => {
       applyMonetImageLayout(image, width, height, monetUrl(width, height, seed));
+      monetisationStats.imagesReplaced++;
     }).catch(() => {
       applyMonetImageLayout(image, FALLBACK_WIDTH, FALLBACK_HEIGHT, monetUrl(FALLBACK_WIDTH, FALLBACK_HEIGHT, seed));
+      monetisationStats.imagesReplaced++;
     }).finally(() => {
       image.removeAttribute("monetising");
     });

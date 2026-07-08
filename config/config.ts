@@ -1,4 +1,5 @@
 import { createRequire as nodeCreateRequire } from 'module'
+import { randomUUID } from 'crypto'
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -6,14 +7,22 @@ import { Transform } from 'stream'
 import type { IncomingMessage, ServerResponse } from 'http'
 
 import type { RawWebsiteConfig, Controller, Website } from 'thalia'
+import type { RequestInfo } from 'thalia/server'
 import maxmind, { type CityResponse } from 'maxmind'
 import Handlebars from 'handlebars'
 
 import { monetPaintingUrl, parseMonetRequestPath } from './assets'
 import { rejectProxyRequest } from './proxy-target'
+import { classifyVisit } from './visit-log'
 import { downloadCitiesData } from './mmdb'
-import { paintings, sites, siteVisitors, visitors as visitorsTable } from '../models/schema'
-import { getAllSites, getVisitorsWithSites, recordSiteVisit, type MonetiseDb } from '../models/queries'
+import { paintings, serverVisits, sites, visitors as visitorsTable, monetisationReports } from '../models/schema'
+import {
+  getAllSites,
+  getVisitorsWithVisits,
+  recordMonetisationReport,
+  recordServerVisit,
+  type MonetiseDb,
+} from '../models/queries'
 
 const nodeRequire = nodeCreateRequire(import.meta.url)
 const unblocker = nodeRequire('unblocker')
@@ -29,7 +38,7 @@ downloadCitiesData().then((message) => {
 const unblockerConfig = {
   // Omit `host` so unblocker uses the request Host (www vs apex) for referer recovery.
   prefix: '/proxy/',
-  responseMiddleware: [noStoreProxyMiddleware, googleAnalyticsMiddleware],
+  responseMiddleware: [noStoreProxyMiddleware, pageInjectionMiddleware],
   clientScripts: true,
 }
 const handleRequest = unblocker(unblockerConfig)
@@ -53,13 +62,94 @@ function setVisitorCookie(res: ServerResponse): void {
   res.setHeader('Set-Cookie', 'monetiseVisitor=1; Path=/; SameSite=Lax')
 }
 
-function rejectBlockedProxyTarget(res: ServerResponse, reqUrl: string): boolean {
+/**
+ * True when an error (or any error in its `cause` chain) is a DB connection
+ * teardown — expected for fire-and-forget writes that outlive a closing pool
+ * (e.g. during test shutdown). These are noise, not real failures.
+ */
+function isDbTeardownError(error: unknown): boolean {
+  let current: unknown = error
+  for (let depth = 0; depth < 5 && current != null; depth++) {
+    const message =
+      typeof current === 'object' && current !== null && 'message' in current
+        ? String((current as { message: unknown }).message)
+        : String(current)
+    if (/Pool is closed|Connection.*(closed|ended)|closed state/i.test(message)) {
+      return true
+    }
+    current =
+      typeof current === 'object' && current !== null && 'cause' in current
+        ? (current as { cause: unknown }).cause
+        : undefined
+  }
+  return false
+}
+
+/** Log a fire-and-forget visit-write rejection, suppressing DB teardown noise. */
+function logVisitWriteError(context: string, error: unknown): void {
+  if (isDbTeardownError(error)) return
+  console.error(context, error)
+}
+
+function rejectBlockedProxyTarget(
+  res: ServerResponse,
+  reqUrl: string,
+  website: Website,
+  req: IncomingMessage,
+  requestInfo: RequestInfo,
+): boolean {
   const reason = rejectProxyRequest(reqUrl)
   if (!reason) return false
   console.log('Blocked proxy target:', reason, reqUrl)
+  const db = monetiseDb(website)
+  if (db) {
+    void maybeRecordVisit(website, req, requestInfo, {
+      kind: 'proxy_blocked',
+      blockReason: reason,
+      forceTargetUrl: reqUrl,
+    }).catch((error) => logVisitWriteError('Failed to record blocked proxy visit:', error))
+  }
   res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' })
   res.end('403 Not allowed')
   return true
+}
+
+type MonetiseRequest = IncomingMessage & { monetiseVisitToken?: string }
+
+async function maybeRecordVisit(
+  website: Website,
+  req: IncomingMessage,
+  requestInfo: RequestInfo,
+  overrides?: Parameters<typeof classifyVisit>[2],
+): Promise<string | undefined> {
+  const db = monetiseDb(website)
+  if (!db) return undefined
+
+  const decision = classifyVisit(req, requestInfo, overrides)
+  if (!decision.log || !decision.target) return undefined
+
+  let visitToken: string | undefined
+  if (decision.kind === 'proxy_document') {
+    visitToken = randomUUID()
+    ;(req as MonetiseRequest).monetiseVisitToken = visitToken
+  }
+
+  await recordServerVisit(
+    db,
+    {
+      targetUrl: decision.target.targetUrl,
+      origin: decision.target.origin,
+      host: decision.target.host,
+      kind: decision.kind,
+      requestPath: decision.requestPath,
+      blockReason: decision.blockReason,
+      visitToken,
+    },
+    requestInfo.ip,
+    req.headers['user-agent'] ?? '',
+  )
+
+  return visitToken
 }
 
 function monetiseDb(website: Website): MonetiseDb | null {
@@ -69,33 +159,18 @@ function monetiseDb(website: Website): MonetiseDb | null {
 async function siteVisit(
   website: Website,
   req: IncomingMessage,
-  ip: string,
-  userAgent: string | undefined,
+  requestInfo: RequestInfo,
 ): Promise<void> {
-  const db = monetiseDb(website)
-  if (!db) return
+  await maybeRecordVisit(website, req, requestInfo)
+}
 
-  let url = req.url ?? ''
-
-  const query = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`).searchParams
-  const goto = query.get('goto')
-  if (goto) {
-    url = goto
-  } else if (url.indexOf('/proxy/') > -1) {
-    url = url.split('/proxy/').pop() ?? url
-
-    try {
-      if (url.indexOf('http') !== 0) {
-        url = `https://${url}`
-      }
-      const urlObject = new URL(url)
-      url = urlObject.origin
-    } catch {
-      /* keep url as-is */
-    }
-  }
-
-  await recordSiteVisit(db, url, ip, userAgent ?? '')
+function readRequestBody(req: IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = []
+    req.on('data', (chunk) => chunks.push(chunk as Buffer))
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
+    req.on('error', reject)
+  })
 }
 
 const homepage: Controller = (res, req, website, requestInfo) => {
@@ -108,19 +183,19 @@ const homepage: Controller = (res, req, website, requestInfo) => {
       url = `https://${url}`
     }
 
-    if (rejectBlockedProxyTarget(res, `/proxy/${url}`)) return
+    if (rejectBlockedProxyTarget(res, `/proxy/${url}`, website, req, requestInfo)) return
 
     console.log('IP', requestInfo.ip)
 
-    siteVisit(website, req, requestInfo.ip, req.headers['user-agent'])
-      .catch((error) => console.error('siteVisit failed:', error))
+    siteVisit(website, req, requestInfo)
+      .catch((error) => logVisitWriteError('siteVisit failed:', error))
       .then(() => {
         res.writeHead(302, { Location: `/proxy/${url}` })
         res.end()
       })
   } else {
-    siteVisit(website, req, requestInfo.ip, req.headers['user-agent'])
-      .catch((error) => console.error('siteVisit failed:', error))
+    siteVisit(website, req, requestInfo)
+      .catch((error) => logVisitWriteError('siteVisit failed:', error))
       .then(() => {
         void website
           .asyncServeHandlebarsTemplate({
@@ -148,7 +223,7 @@ const proxy: Controller = (res, req, website, requestInfo) => {
   const sections = url.split('/proxy/')
   url = req.url = `${sections[0]}/proxy/${sections.pop()}`
 
-  if (rejectBlockedProxyTarget(res, url)) return
+  if (rejectBlockedProxyTarget(res, url, website, req, requestInfo)) return
 
   const cookies = requestInfo.cookies
 
@@ -165,8 +240,8 @@ const proxy: Controller = (res, req, website, requestInfo) => {
   } else if (req.url?.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp|avif)(\?.*)?$/i)) {
     monetAsset(res, req)
   } else {
-    void siteVisit(website, req, requestInfo.ip, req.headers['user-agent']).catch((error) =>
-      console.error('siteVisit failed:', error),
+    void siteVisit(website, req, requestInfo).catch((error) =>
+      logVisitWriteError('siteVisit failed:', error),
     )
     handleRequest(req, res, (err?: Error) => {
       if (!err) return
@@ -217,7 +292,7 @@ const visitorsPage: Controller = (res, _req, website, _requestInfo) => {
   }
 
   Promise.all([
-    getVisitorsWithSites(db),
+    getVisitorsWithVisits(db),
     maxmind.open<CityResponse>(path.join(rootDir, 'data', 'city.mmdb')),
   ])
     .then(([visitorRows, lookup]) => {
@@ -234,13 +309,17 @@ const visitorsPage: Controller = (res, _req, website, _requestInfo) => {
           longitude: blob ? blob.location?.longitude : 'Unknown',
           latitude: blob ? blob.location?.latitude : 'Unknown',
           date,
-          sites: visitor.sites,
+          visits: visitor.visits.map((visit) => ({
+            ...visit,
+            visitedAt: visit.visitedAt ? visit.visitedAt.toLocaleString() : '',
+          })),
           count: visitor.count,
         }
       })
 
       const sorted = data.sort((a, b) => b.count - a.count)
       const template = Handlebars.compile(readView('visitors'))
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
       res.end(template({ visitors: sorted }))
     })
     .catch((error) => {
@@ -279,13 +358,88 @@ function monetAsset(res: ServerResponse, req: IncomingMessage): void {
 
 const monetAssetController: Controller = (res, req) => monetAsset(res, req)
 
+const visitReport: Controller = (res, req, website, _requestInfo) => {
+  if ((req.method ?? 'GET').toUpperCase() !== 'POST') {
+    res.writeHead(405, { 'Content-Type': 'text/plain; charset=utf-8' })
+    res.end('Method not allowed')
+    return
+  }
+
+  const db = monetiseDb(website)
+  if (!db) {
+    res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8' })
+    res.end('Database unavailable')
+    return
+  }
+
+  readRequestBody(req)
+    .then((raw) => {
+      const body = JSON.parse(raw) as {
+        visitToken?: string
+        pageUrl?: string
+        documentTitle?: string
+        timing?: { pageLoadMs?: number; domContentLoadedMs?: number }
+        monetisation?: {
+          imagesScanned?: number
+          imagesReplaced?: number
+          backgroundsReplaced?: number
+          canvasesReplaced?: number
+          skippedAlreadyMonetised?: number
+        }
+        viewport?: { width?: number; height?: number }
+        signals?: { webdriver?: boolean }
+        clientScriptVersion?: string
+      }
+
+      if (!body.visitToken) {
+        res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' })
+        res.end('Missing visitToken')
+        return
+      }
+
+      const monetisation = body.monetisation ?? {}
+      return recordMonetisationReport(db, {
+        visitToken: body.visitToken,
+        pageUrl: body.pageUrl ?? '',
+        pageLoadMs: body.timing?.pageLoadMs ?? null,
+        domContentLoadedMs: body.timing?.domContentLoadedMs ?? null,
+        imagesScanned: monetisation.imagesScanned ?? 0,
+        imagesReplaced: monetisation.imagesReplaced ?? 0,
+        backgroundsReplaced: monetisation.backgroundsReplaced ?? 0,
+        canvasesReplaced: monetisation.canvasesReplaced ?? 0,
+        skippedAlreadyMonetised: monetisation.skippedAlreadyMonetised ?? 0,
+        documentTitle: body.documentTitle ?? null,
+        viewportW: body.viewport?.width ?? null,
+        viewportH: body.viewport?.height ?? null,
+        clientScriptVersion: body.clientScriptVersion ?? 'unknown',
+        webdriver: body.signals?.webdriver ?? null,
+      }).then((report) => {
+        if (!report) {
+          res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' })
+          res.end('Unknown visit token')
+          return
+        }
+        res.writeHead(204)
+        res.end()
+      })
+    })
+    .catch((error) => {
+      console.error('visit-report failed:', error)
+      if (!res.headersSent) {
+        res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' })
+        res.end('Bad request')
+      }
+    })
+}
+
 const config: RawWebsiteConfig = {
   domains: ['monetiseyourwebsite.com', 'www.monetiseyourwebsite.com'],
   database: {
     schemas: {
       sites,
       visitors: visitorsTable,
-      siteVisitors,
+      serverVisits,
+      monetisationReports,
       paintings,
     },
   },
@@ -299,6 +453,7 @@ const config: RawWebsiteConfig = {
     websites,
     visitors: visitorsPage,
     geoip,
+    'visit-report': visitReport,
   },
   routes: [
     {
@@ -335,14 +490,23 @@ function gaSnippet(): string {
   ].join('\n')
 }
 
-/** Stream HTML through — buffering the whole body broke nginx chunked encoding on large pages. */
-function googleAnalyticsMiddleware(data: { contentType?: string; stream: NodeJS.ReadWriteStream }) {
+/** Stream HTML through — inject visit token + GA before </body>. */
+function pageInjectionMiddleware(data: {
+  contentType?: string
+  stream: NodeJS.ReadWriteStream
+  clientRequest?: IncomingMessage
+}) {
   if (!data.contentType?.includes('text/html')) {
     return
   }
 
+  const visitToken = (data.clientRequest as MonetiseRequest | undefined)?.monetiseVisitToken
+  const visitSnippet = visitToken
+    ? `<script>window.__MONETISE_VISIT__=${JSON.stringify({ token: visitToken })};</script>`
+    : ''
   const ga = gaSnippet()
-  if (!ga) return
+  const injection = [visitSnippet, ga].filter(Boolean).join('\n')
+  if (!injection) return
 
   const closing = '</body>'
   let pending = ''
@@ -355,7 +519,7 @@ function googleAnalyticsMiddleware(data: { contentType?: string; stream: NodeJS.
         pending = ''
 
         if (text.includes(closing)) {
-          text = text.replace(closing, `${ga}\n\n${closing}`)
+          text = text.replace(closing, `${injection}\n\n${closing}`)
         } else {
           for (let i = closing.length - 1; i > 0; i--) {
             const suffix = text.slice(-i)
