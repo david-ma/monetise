@@ -16,6 +16,8 @@
  *   - XMLHttpRequest.open, fetch — rewrite request URLs.
  *   - document.createElement — intercept src/href setters on new elements.
  *   - history.pushState / replaceState — rewrite SPA navigation URLs.
+ *   - location.assign / replace — rewrite hard navigations (best-effort; some
+ *     SPA routers still escape, see docs/2026-07-08_spa_router.md).
  *   - WebSocket — tunnel through the proxy host.
  *   - body.appendChild — re-run initForWindow inside about:blank iframes.
  *
@@ -274,6 +276,30 @@ function initWebSockets(config: UnblockerConfig, win: UnblockerWindow): void {
   } as unknown as typeof WebSocket
 }
 
+/**
+ * Route hard navigations via location.assign / location.replace through fixUrl so
+ * they stay under the proxy prefix. Best-effort: these methods are not writable in
+ * every browser, and the location.href setter cannot be redefined at all, so some
+ * SPA routers will still escape (see docs/2026-07-08_spa_router.md).
+ */
+function initLocation(config: UnblockerConfig, win: UnblockerWindow): void {
+  const loc = win.location
+  if (!loc) return
+
+  for (const method of ['assign', 'replace'] as const) {
+    const original = loc[method]
+    if (typeof original !== 'function') continue
+    const call = original.bind(loc)
+    try {
+      loc[method] = function (url: string | URL) {
+        return call(fixUrl(String(url), config, win.location) ?? String(url))
+      }
+    } catch {
+      // Location methods are read-only in this browser; nothing we can do.
+    }
+  }
+}
+
 function initPushState(config: UnblockerConfig, win: UnblockerWindow): void {
   if (!win.history?.pushState) return
 
@@ -307,6 +333,7 @@ export function initForWindow(config: UnblockerConfig, win: UnblockerWindow): vo
   initAppendBodyIframe(config, win)
   initWebSockets(config, win)
   initPushState(config, win)
+  initLocation(config, win)
   if (typeof window !== 'undefined' && win === window) {
     delete window.unblockerInit
   }

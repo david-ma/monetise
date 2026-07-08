@@ -193,6 +193,22 @@
       return new WebSocketCtor(url, protocols);
     };
   }
+  function initLocation(config, win) {
+    const loc = win.location;
+    if (!loc)
+      return;
+    for (const method of ["assign", "replace"]) {
+      const original = loc[method];
+      if (typeof original !== "function")
+        continue;
+      const call = original.bind(loc);
+      try {
+        loc[method] = function(url) {
+          return call(fixUrl(String(url), config, win.location) ?? String(url));
+        };
+      } catch {}
+    }
+  }
   function initPushState(config, win) {
     if (!win.history?.pushState)
       return;
@@ -225,6 +241,7 @@
     initAppendBodyIframe(config, win);
     initWebSockets(config, win);
     initPushState(config, win);
+    initLocation(config, win);
     if (typeof window !== "undefined" && win === window) {
       delete window.unblockerInit;
     }
