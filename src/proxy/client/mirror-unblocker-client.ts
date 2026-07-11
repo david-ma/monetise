@@ -27,12 +27,31 @@ declare global {
   }
 }
 
-function fixUrl(
+const banlist = ['posthog']
+
+const MONETISE_LOCAL_PATHS = [
+  '/visit-report',
+  '/monet/',
+  '/mirror/',
+  '/proxy/client/',
+  '/version',
+  '/geoip',
+]
+
+export function fixUrl(
   urlStr: string | undefined,
   config: UnblockerConfig,
   loc: Location,
 ): string | undefined {
-  if (!urlStr || typeof urlStr !== 'string') return urlStr
+  if (urlStr == null) return urlStr
+
+  if (typeof urlStr !== 'string') {
+    urlStr = String(urlStr)
+  }
+
+  if (urlStr.startsWith('/') && MONETISE_LOCAL_PATHS.some((p) => urlStr.startsWith(p))) {
+    return urlStr
+  }
 
   let currentRemoteHref: string
   if (loc.pathname.substr(0, config.prefix.length) === config.prefix) {

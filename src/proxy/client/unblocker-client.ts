@@ -102,19 +102,37 @@ declare global {
 
 const banlist = ['posthog']
 
-function fixUrl(
+/** Monetise routes that must not be rewritten onto the proxied upstream host. */
+const MONETISE_LOCAL_PATHS = [
+  '/visit-report',
+  '/monet/',
+  '/mirror/',
+  '/proxy/client/',
+  '/version',
+  '/geoip',
+]
+
+export function fixUrl(
   urlStr: string | undefined,
   config: UnblockerConfig,
   loc: Location,
 ): string | undefined {
-  if (!urlStr) {
+  if (urlStr == null) {
     console.error('No urlStr provided', urlStr)
-    return
+    return urlStr
   }
 
-  if (typeof urlStr !== 'string' || typeof urlStr.includes !== 'function') {
+  if (typeof urlStr !== 'string') {
+    urlStr = String(urlStr)
+  }
+
+  if (typeof urlStr.includes !== 'function') {
     console.error('urlStr is not a string', urlStr)
-    return
+    return urlStr
+  }
+
+  if (urlStr.startsWith('/') && MONETISE_LOCAL_PATHS.some((p) => urlStr.startsWith(p))) {
+    return urlStr
   }
 
   if (banlist.some((banned) => urlStr.includes(banned))) {

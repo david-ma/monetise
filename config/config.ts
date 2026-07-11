@@ -21,6 +21,7 @@ import {
   streamMirrorTarget,
 } from './mirror'
 import { classifyVisit } from './visit-log'
+import { clientScriptsInjector } from './client-scripts'
 import { downloadCitiesData } from './mmdb'
 import { paintings, serverVisits, sites, visitors as visitorsTable, monetisationReports } from '../models/schema'
 import {
@@ -45,15 +46,19 @@ downloadCitiesData().then((message) => {
 const unblockerConfig = {
   // Omit `host` so unblocker uses the request Host (www vs apex) for referer recovery.
   prefix: '/proxy/',
-  responseMiddleware: [noStoreProxyMiddleware, pageInjectionMiddleware],
-  clientScripts: true,
+  responseMiddleware: [
+    noStoreProxyMiddleware,
+    pageInjectionMiddleware,
+    clientScriptsInjector('/proxy/'),
+  ],
+  clientScripts: false,
 }
 const handleRequest = unblocker(unblockerConfig)
 
 const mirrorUnblockerConfig = {
   prefix: '/mirror/',
-  responseMiddleware: [mirrorCorsMiddleware],
-  clientScripts: true,
+  responseMiddleware: [mirrorCorsMiddleware, clientScriptsInjector('/mirror/')],
+  clientScripts: false,
 }
 const handleMirrorUnblocker = unblocker(mirrorUnblockerConfig)
 

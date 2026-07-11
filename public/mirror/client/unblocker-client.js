@@ -40,11 +40,26 @@
   // src/proxy/client/mirror-unblocker-client.ts
   var exports_mirror_unblocker_client = {};
   __export(exports_mirror_unblocker_client, {
-    initForWindow: () => initForWindow
+    initForWindow: () => initForWindow,
+    fixUrl: () => fixUrl
   });
+  var MONETISE_LOCAL_PATHS = [
+    "/visit-report",
+    "/monet/",
+    "/mirror/",
+    "/proxy/client/",
+    "/version",
+    "/geoip"
+  ];
   function fixUrl(urlStr, config, loc) {
-    if (!urlStr || typeof urlStr !== "string")
+    if (urlStr == null)
       return urlStr;
+    if (typeof urlStr !== "string") {
+      urlStr = String(urlStr);
+    }
+    if (urlStr.startsWith("/") && MONETISE_LOCAL_PATHS.some((p) => urlStr.startsWith(p))) {
+      return urlStr;
+    }
     let currentRemoteHref;
     if (loc.pathname.substr(0, config.prefix.length) === config.prefix) {
       currentRemoteHref = loc.pathname.substr(config.prefix.length) + loc.search + loc.hash;
