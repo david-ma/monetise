@@ -69,6 +69,29 @@ describeDatabaseOnline('monetise HTTP routes', () => {
     expect(location).toMatch(/\/S\/i-[A-Za-z0-9]+-S\.jpg$/)
   })
 
+  test('OPTIONS /mirror/ returns permissive CORS', async () => {
+    const res = await fetchFromServer('/mirror/https://example.com/test.jpg', port, {
+      method: 'OPTIONS',
+    })
+    expect(res.status).toBe(204)
+    expect(res.headers.get('access-control-allow-origin')).toBe('*')
+  })
+
+  test('GET /mirror/client/unblocker-client.js serves the mirror script', async () => {
+    const res = await fetchFromServer('/mirror/client/unblocker-client.js', port)
+    expect(res.status).toBe(200)
+    const js = await res.text()
+    expect(js).toContain('unblockerInit')
+    expect(js).not.toContain('monetiseAllImages')
+    expect(res.headers.get('access-control-allow-origin')).toBe('*')
+  })
+
+  test('GET /mirror/https://127.0.0.1/ blocks loopback SSRF', async () => {
+    const res = await fetchFromServer('/mirror/https://127.0.0.1/secret', port)
+    expect(res.status).toBe(403)
+    expect(res.headers.get('access-control-allow-origin')).toBe('*')
+  })
+
   test('GET /visitors is password protected', async () => {
     const res = await fetchFromServer('/visitors', port)
     expect(res.status).toBe(401)

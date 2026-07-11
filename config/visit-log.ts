@@ -28,6 +28,7 @@ export type VisitLogDecision = {
 }
 
 const LOG_SKIP_PATH_PREFIXES = [
+  '/mirror',
   '/monet',
   '/assets',
   '/css',

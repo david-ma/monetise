@@ -8,6 +8,7 @@
     "start": "thalia",
     "dev": "thalia-develop",
     "build:client": "bun build src/proxy/client/unblocker-client.ts --outfile public/proxy/client/unblocker-client.js --target browser --format=iife",
+    "build:mirror-client": "bun build src/proxy/client/mirror-unblocker-client.ts --outfile public/mirror/client/unblocker-client.js --target browser --format=iife",
     "paintings": "bun config/images.ts",
     "test": "bun test",
     "typecheck": "bunx tsc --noEmit -p tsconfig.json",

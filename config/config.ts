@@ -13,6 +13,13 @@ import Handlebars from 'handlebars'
 
 import { monetPaintingUrl, parseMonetRequestPath } from './assets'
 import { rejectProxyRequest } from './proxy-target'
+import { mirrorTargetRawFromRequest } from './mirror-target'
+import {
+  mirrorCorsMiddleware,
+  rejectMirrorResponse,
+  setMirrorCors,
+  streamMirrorTarget,
+} from './mirror'
 import { classifyVisit } from './visit-log'
 import { downloadCitiesData } from './mmdb'
 import { paintings, serverVisits, sites, visitors as visitorsTable, monetisationReports } from '../models/schema'
@@ -42,6 +49,13 @@ const unblockerConfig = {
   clientScripts: true,
 }
 const handleRequest = unblocker(unblockerConfig)
+
+const mirrorUnblockerConfig = {
+  prefix: '/mirror/',
+  responseMiddleware: [mirrorCorsMiddleware],
+  clientScripts: true,
+}
+const handleMirrorUnblocker = unblocker(mirrorUnblockerConfig)
 
 function readView(name: string): string {
   return fs.readFileSync(path.join(srcDir, `${name}.hbs`), 'utf8')
@@ -358,6 +372,51 @@ function monetAsset(res: ServerResponse, req: IncomingMessage): void {
 
 const monetAssetController: Controller = (res, req) => monetAsset(res, req)
 
+const mirror: Controller = (res, req) => {
+  let url = req.url ?? ''
+  const sections = url.split('/mirror/')
+  url = req.url = `${sections[0]}/mirror/${sections.pop()}`
+
+  if (url.indexOf('/mirror/client/') > -1) {
+    setMirrorCors(res)
+    serveFile(res, path.join(rootDir, 'public', 'mirror', 'client', 'unblocker-client.js'))
+    return
+  }
+
+  if (rejectMirrorResponse(res, url)) return
+
+  if (sections.length > 2) {
+    res.writeHead(302, { Location: url })
+    res.end()
+    return
+  }
+
+  const method = (req.method ?? 'GET').toUpperCase()
+  if (method === 'OPTIONS') {
+    res.statusCode = 204
+    setMirrorCors(res)
+    res.end()
+    return
+  }
+
+  if (url.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp|avif)(\?.*)?$/i)) {
+    const upstreamUrl = mirrorTargetRawFromRequest(url)
+    if (upstreamUrl) {
+      void streamMirrorTarget(res, req, upstreamUrl)
+      return
+    }
+  }
+
+  handleMirrorUnblocker(req, res, (err?: Error) => {
+    if (!err) return
+    console.error('Mirror error:', req.url, err)
+    if (!res.headersSent) {
+      res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' })
+      res.end('Mirror error')
+    }
+  })
+}
+
 const visitReport: Controller = (res, req, website, _requestInfo) => {
   if ((req.method ?? 'GET').toUpperCase() !== 'POST') {
     res.writeHead(405, { 'Content-Type': 'text/plain; charset=utf-8' })
@@ -450,6 +509,7 @@ const config: RawWebsiteConfig = {
     _next: monetAssetController,
     assets: monetAssetController,
     monet: monetAssetController,
+    mirror,
     websites,
     visitors: visitorsPage,
     geoip,
