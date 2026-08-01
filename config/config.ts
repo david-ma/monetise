@@ -384,7 +384,7 @@ const visitorsPage: Controller = (res, _req, website, requestInfo) => {
             geo: geo(ip),
             visits: page.detail.visits.map((visit) => ({
               ...visit,
-              visitedAt: visit.visitedAt ? visit.visitedAt.toLocaleString() : '',
+              visitedAt: visit.visitedAt ? visit.visitedAt.toLocaleString('en-AU') : '',
             })),
             rateLimit: {
               ...rate,
@@ -403,14 +403,14 @@ const visitorsPage: Controller = (res, _req, website, requestInfo) => {
           likelyReal: page.likelyReal.map((row) => ({
             ...row,
             ...geo(row.ip),
-            lastReportAt: row.lastReportAt ? row.lastReportAt.toLocaleString() : '',
+            lastReportAt: row.lastReportAt ? row.lastReportAt.toLocaleString('en-AU') : '',
             uaShort: (row.userAgent || '').slice(0, 80),
             ipHref: `/visitors?ip=${encodeURIComponent(row.ip)}`,
           })),
           heavyProxy: page.heavyProxy.map((row) => ({
             ...row,
             ...geo(row.ip),
-            lastSeen: row.lastSeen ? row.lastSeen.toLocaleString() : '',
+            lastSeen: row.lastSeen ? row.lastSeen.toLocaleString('en-AU') : '',
             uaShort: (row.userAgent || '').slice(0, 80),
             ipHref: `/visitors?ip=${encodeURIComponent(row.ip)}`,
           })),
