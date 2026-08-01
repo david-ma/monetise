@@ -5,9 +5,9 @@ import {
 } from '../../config/proxy-rate-limit'
 
 describe('proxyRateLimitConfigFromEnv', () => {
-  test('defaults to 30 / 12h', () => {
+  test('defaults to 200 / 12h', () => {
     const cfg = proxyRateLimitConfigFromEnv({})
-    expect(cfg.maxRequests).toBe(30)
+    expect(cfg.maxRequests).toBe(300)
     expect(cfg.windowMs).toBe(12 * 60 * 60 * 1000)
   })
 

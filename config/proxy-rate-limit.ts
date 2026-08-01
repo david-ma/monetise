@@ -9,7 +9,7 @@
  */
 import { recordSlidingWindowHit } from 'thalia/util'
 
-const DEFAULT_MAX = 30
+const DEFAULT_MAX = 300
 const DEFAULT_WINDOW_MS = 12 * 60 * 60 * 1000
 
 export type ProxyRateLimitStats = {
@@ -129,6 +129,9 @@ export class ProxyRateLimiter {
 /** Process-wide limiter for the proxy controller. */
 export const proxyRateLimiter = new ProxyRateLimiter()
 
+/** IPs we've already emitted a prod-level rate-limit line for in this process. */
+const rateLimitLoggedIps = new Set<string>()
+
 export function respondProxyRateLimited(
   res: {
     writeHead: (code: number, headers?: Record<string, string>) => void
@@ -138,7 +141,19 @@ export function respondProxyRateLimited(
   ip: string,
 ): void {
   const retryAfterSec = Math.max(1, Math.ceil(retryAfterMs / 1000))
-  console.log('proxy_rate_limited', ip, `retryAfter=${retryAfterSec}s`, proxyRateLimiter.stats())
+  const key = ip || 'unknown-ip'
+  const stats = proxyRateLimiter.stats()
+  const summary = `proxy_rate_limited ip=${key} retryAfter=${retryAfterSec}s denied=${stats.denied} max=${stats.maxRequests}`
+
+  // First deny for this IP: one quiet prod line. Further denies only in non-prod
+  // (Node's console.debug still writes to stdout — do not rely on it for silence).
+  if (!rateLimitLoggedIps.has(key)) {
+    rateLimitLoggedIps.add(key)
+    console.log(summary)
+  } else if (process.env.NODE_ENV !== 'production') {
+    console.debug(summary)
+  }
+
   res.writeHead(429, {
     'Content-Type': 'text/plain; charset=utf-8',
     'Retry-After': String(retryAfterSec),
