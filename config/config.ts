@@ -342,7 +342,7 @@ const visitorsPage: Controller = (res, _req, website, requestInfo) => {
   const windowMs = proxyRateLimiter.stats().windowMs
 
   const pagePromise = detailIp
-    ? getRecentVisitsForIp(db, detailIp, 50).then((detail) => ({ mode: 'detail' as const, detail }))
+    ? getRecentVisitsForIp(db, detailIp, 500).then((detail) => ({ mode: 'detail' as const, detail }))
     : getRecentVisitSample(db, windowMs).then((sample) =>
         Promise.all([
           getVisitorDashboardStats(db, windowMs, VISITOR_DASHBOARD_SAMPLE_LIMIT, sample),
