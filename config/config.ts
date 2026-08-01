@@ -23,10 +23,14 @@ import {
 import { classifyVisit } from './visit-log'
 import { clientScriptsInjector } from './client-scripts'
 import { downloadCitiesData } from './mmdb'
+import { proxyRateLimiter, respondProxyRateLimited } from './proxy-rate-limit'
 import { paintings, serverVisits, sites, visitors as visitorsTable, monetisationReports } from '../models/schema'
 import {
   getAllSites,
-  getVisitorsWithVisits,
+  getHeavyProxyVisitors,
+  getLikelyRealVisitors,
+  getRecentVisitsForIp,
+  getVisitorDashboardStats,
   recordMonetisationReport,
   recordServerVisit,
   type MonetiseDb,
@@ -259,6 +263,12 @@ const proxy: Controller = (res, req, website, requestInfo) => {
   } else if (req.url?.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp|avif)(\?.*)?$/i)) {
     monetAsset(res, req)
   } else {
+    const rate = proxyRateLimiter.check(requestInfo.ip)
+    if (!rate.allowed) {
+      respondProxyRateLimited(res, rate.retryAfterMs, requestInfo.ip)
+      return
+    }
+
     void siteVisit(website, req, requestInfo).catch((error) =>
       logVisitWriteError('siteVisit failed:', error),
     )
@@ -303,43 +313,95 @@ const websites: Controller = (res, _req, website, _requestInfo) => {
     })
 }
 
-const visitorsPage: Controller = (res, _req, website, _requestInfo) => {
+const visitorsPage: Controller = (res, _req, website, requestInfo) => {
   const db = monetiseDb(website)
   if (!db) {
     res.end('Database unavailable')
     return
   }
 
-  Promise.all([
-    getVisitorsWithVisits(db),
-    maxmind.open<CityResponse>(path.join(rootDir, 'data', 'city.mmdb')),
-  ])
-    .then(([visitorRows, lookup]) => {
-      const data = visitorRows.map((visitor) => {
-        const blob = lookup.get(visitor.ip)
-        const date = (visitor.createdAt ?? new Date()).toLocaleString()
+  const detailIp = typeof requestInfo.query.ip === 'string' ? requestInfo.query.ip.trim() : ''
+  const windowMs = proxyRateLimiter.stats().windowMs
 
+  const geoPromise = maxmind.open<CityResponse>(path.join(rootDir, 'data', 'city.mmdb'))
+
+  const pagePromise = detailIp
+    ? getRecentVisitsForIp(db, detailIp, 50).then((detail) => ({ mode: 'detail' as const, detail }))
+    : Promise.all([
+        getVisitorDashboardStats(db, windowMs),
+        getLikelyRealVisitors(db, 50),
+        getHeavyProxyVisitors(db, windowMs, 50),
+      ]).then(([stats, likelyReal, heavyProxy]) => ({
+        mode: 'index' as const,
+        stats,
+        likelyReal,
+        heavyProxy,
+      }))
+
+  Promise.all([pagePromise, geoPromise])
+    .then(([page, lookup]) => {
+      const rate = proxyRateLimiter.stats()
+      const geo = (ip: string) => {
+        const blob = lookup.get(ip)
         return {
-          id: visitor.id,
-          ip: visitor.ip,
-          userAgent: visitor.userAgent,
-          city: blob ? blob.city?.names?.en : 'Unknown',
-          country: blob ? blob.country?.names?.en : 'Unknown',
-          longitude: blob ? blob.location?.longitude : 'Unknown',
-          latitude: blob ? blob.location?.latitude : 'Unknown',
-          date,
-          visits: visitor.visits.map((visit) => ({
-            ...visit,
-            visitedAt: visit.visitedAt ? visit.visitedAt.toLocaleString() : '',
-          })),
-          count: visitor.count,
+          city: blob?.city?.names?.en ?? 'Unknown',
+          country: blob?.country?.names?.en ?? 'Unknown',
+          longitude: blob?.location?.longitude ?? 'Unknown',
+          latitude: blob?.location?.latitude ?? 'Unknown',
         }
-      })
+      }
 
-      const sorted = data.sort((a, b) => b.count - a.count)
       const template = Handlebars.compile(readView('visitors'))
       res.setHeader('Content-Type', 'text/html; charset=utf-8')
-      res.end(template({ visitors: sorted }))
+
+      if (page.mode === 'detail') {
+        const visitor = page.detail.visitor
+        const ip = visitor?.ip ?? detailIp
+        res.end(
+          template({
+            mode: 'detail',
+            isDetail: true,
+            detailIp: ip,
+            visitor,
+            geo: geo(ip),
+            visits: page.detail.visits.map((visit) => ({
+              ...visit,
+              visitedAt: visit.visitedAt ? visit.visitedAt.toLocaleString() : '',
+            })),
+            rateLimit: {
+              ...rate,
+              windowLabel: `${Math.round(rate.windowMs / (60 * 60 * 1000))}h`,
+            },
+          }),
+        )
+        return
+      }
+
+      res.end(
+        template({
+          mode: 'index',
+          isDetail: false,
+          stats: page.stats,
+          likelyReal: page.likelyReal.map((row) => ({
+            ...row,
+            ...geo(row.ip),
+            lastReportAt: row.lastReportAt ? row.lastReportAt.toLocaleString() : '',
+            uaShort: (row.userAgent || '').slice(0, 80),
+            ipHref: `/visitors?ip=${encodeURIComponent(row.ip)}`,
+          })),
+          heavyProxy: page.heavyProxy.map((row) => ({
+            ...row,
+            ...geo(row.ip),
+            lastSeen: row.lastSeen ? row.lastSeen.toLocaleString() : '',
+            uaShort: (row.userAgent || '').slice(0, 80),
+            ipHref: `/visitors?ip=${encodeURIComponent(row.ip)}`,
+          })),
+          rateLimit: {
+            ...rate,
+            windowLabel: `${Math.round(rate.windowMs / (60 * 60 * 1000))}h`,
+          },
+        }),
+      )
     })
     .catch((error) => {
       console.error(error)

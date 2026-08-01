@@ -4,15 +4,50 @@
   <meta charset="utf-8" />
   <title>Visitors</title>
   <style>
+    body {
+      font-family: system-ui, sans-serif;
+      margin: 1.5rem;
+      line-height: 1.4;
+    }
+
+    h1 {
+      font-size: 1.4rem;
+    }
+
+    h2 {
+      font-size: 1.15rem;
+      margin-top: 2rem;
+    }
+
+    .stats,
+    .rate {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin: 1rem 0;
+    }
+
+    .stat {
+      border: 1px solid #ccc;
+      padding: 0.75rem 1rem;
+      min-width: 8rem;
+    }
+
+    .stat strong {
+      display: block;
+      font-size: 1.4rem;
+    }
+
     table {
       width: 100%;
       border-collapse: collapse;
+      margin-top: 0.5rem;
     }
 
     table,
     th,
     td {
-      border: 1px solid black;
+      border: 1px solid #333;
     }
 
     th,
@@ -64,62 +99,121 @@
       font-size: 12px;
     }
 
-    .visit-meta {
+    .visit-meta,
+    .muted {
       color: #555;
       font-size: 12px;
+    }
+
+    a {
+      color: #0645ad;
     }
   </style>
 </head>
 
 <body>
+  <h1>Visitors</h1>
+
+  {{#if rateLimit}}
+  <div class="rate muted">
+    <span>Proxy rate limit: {{rateLimit.maxRequests}} / {{rateLimit.windowLabel}} · keys
+      {{rateLimit.keyCount}} · allowed {{rateLimit.allowed}} · denied {{rateLimit.denied}}</span>
+  </div>
+  {{/if}}
+
+  {{#if isDetail}}
+  <p><a href="/visitors">← Back to overview</a></p>
+  <h2>Detail: {{detailIp}}</h2>
+  {{#if visitor}}
+  <p class="muted">{{geo.country}} / {{geo.city}} · UA: {{visitor.userAgent}}</p>
+  {{else}}
+  <p>No visitor row for this IP.</p>
+  {{/if}}
+  <ul>
+    {{#each visits}}
+    <li>
+      <span class="badge badge-{{badge}}">{{badge}}</span>
+      <span class="visit-meta">{{kind}}{{#if visitedAt}} · {{visitedAt}}{{/if}}</span>
+      <div class="visit-url">{{targetUrl}}</div>
+      {{#if documentTitle}}
+      <div class="visit-meta">title: {{documentTitle}}</div>
+      {{/if}}
+      {{#if hasReport}}
+      <div class="visit-meta">
+        monetised: {{imagesReplaced}} image(s){{#if pageLoadMs}}, load {{pageLoadMs}}ms{{/if}}
+      </div>
+      {{/if}}
+      {{#if blockReason}}
+      <div class="visit-meta">blocked: {{blockReason}}</div>
+      {{/if}}
+    </li>
+    {{/each}}
+  </ul>
+  {{else}}
+
+  {{#if stats}}
+  <div class="stats">
+    <div class="stat"><strong>{{stats.visitsInWindow}}</strong> visits ({{stats.windowHours}}h)</div>
+    <div class="stat"><strong>{{stats.distinctVisitorsInWindow}}</strong> distinct IPs ({{stats.windowHours}}h)</div>
+    <div class="stat"><strong>{{stats.reportsInWindow}}</strong> monetisation reports ({{stats.windowHours}}h)</div>
+  </div>
+  {{/if}}
+
+  <h2>Likely real (browser / monetised)</h2>
+  <p class="muted">Visitors with at least one monetisation report. Click IP for recent visits.</p>
   <table>
     <tr>
-      <th>id</th>
       <th>ip</th>
-      <th>visits</th>
+      <th>reports</th>
+      <th>last report</th>
       <th>country</th>
       <th>city</th>
-      <th>longitude</th>
-      <th>latitude</th>
-      <th>first seen</th>
+      <th>user-agent</th>
     </tr>
-    {{#each visitors}}
+    {{#each likelyReal}}
     <tr>
-      <td>{{id}}</td>
-      <td>{{ip}}</td>
-      <td>
-        <details>
-          <summary>{{count}} visit(s)</summary>
-          <ul>
-            {{#each visits}}
-            <li>
-              <span class="badge badge-{{badge}}">{{badge}}</span>
-              <span class="visit-meta">{{kind}}{{#if visitedAt}} · {{visitedAt}}{{/if}}</span>
-              <div class="visit-url">{{targetUrl}}</div>
-              {{#if documentTitle}}
-              <div class="visit-meta">title: {{documentTitle}}</div>
-              {{/if}}
-              {{#if hasReport}}
-              <div class="visit-meta">
-                monetised: {{imagesReplaced}} image(s){{#if pageLoadMs}}, load {{pageLoadMs}}ms{{/if}}
-              </div>
-              {{/if}}
-              {{#if blockReason}}
-              <div class="visit-meta">blocked: {{blockReason}}</div>
-              {{/if}}
-            </li>
-            {{/each}}
-          </ul>
-        </details>
-      </td>
+      <td><a href="{{ipHref}}">{{ip}}</a></td>
+      <td>{{reportCount}}</td>
+      <td>{{lastReportAt}}</td>
       <td>{{country}}</td>
       <td>{{city}}</td>
-      <td>{{longitude}}</td>
-      <td>{{latitude}}</td>
-      <td>{{date}}</td>
+      <td class="muted">{{uaShort}}</td>
+    </tr>
+    {{else}}
+    <tr>
+      <td colspan="6">None yet.</td>
     </tr>
     {{/each}}
   </table>
+
+  <h2>Heavy proxy use (no browser signal)</h2>
+  <p class="muted">Top IPs by visit count in the rate-limit window with no monetisation report — tune PROXY_RATE_MAX
+    against this list.</p>
+  <table>
+    <tr>
+      <th>ip</th>
+      <th>visits</th>
+      <th>last seen</th>
+      <th>country</th>
+      <th>city</th>
+      <th>user-agent</th>
+    </tr>
+    {{#each heavyProxy}}
+    <tr>
+      <td><a href="{{ipHref}}">{{ip}}</a></td>
+      <td>{{visitCount}}</td>
+      <td>{{lastSeen}}</td>
+      <td>{{country}}</td>
+      <td>{{city}}</td>
+      <td class="muted">{{uaShort}}</td>
+    </tr>
+    {{else}}
+    <tr>
+      <td colspan="6">None in this window.</td>
+    </tr>
+    {{/each}}
+  </table>
+  {{/if}}
 </body>
 
 </html>
