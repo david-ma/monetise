@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, isNull, max, notInArray, sql } from 'drizzle-orm'
+import { and, count, desc, eq, gte, isNull, max, sql } from 'drizzle-orm'
 import type { MySql2Database } from 'drizzle-orm/mysql2'
 import { mysqlInsertIdFromDrizzleMysql2Result } from '../node_modules/thalia/models/util'
 import type { VisitKind } from '../config/visit-log'
@@ -268,10 +268,14 @@ function visitBadge(kind: string, hasReport: boolean): VisitorVisitRow['badge'] 
 }
 
 export type VisitorDashboardStats = {
+  /** Rows examined in the recent sample (capped — not a full-window COUNT). */
   visitsInWindow: number
   distinctVisitorsInWindow: number
   reportsInWindow: number
   windowHours: number
+  /** True when the visit sample hit the cap (counts are approximate). */
+  sampleCapped: boolean
+  sampleLimit: number
 }
 
 export type LikelyRealVisitorRow = {
@@ -291,20 +295,49 @@ export type HeavyProxyVisitorRow = {
   lastSeen: Date | null
 }
 
-/** Headline counters for the limiter window (default 12h). */
-export async function getVisitorDashboardStats(
+/** How many recent `server_visits` rows to pull before aggregating (keeps LIMIT useful). */
+export const VISITOR_DASHBOARD_SAMPLE_LIMIT = 5000
+
+export type RecentVisitSampleRow = {
+  visitorId: number
+  visitedAt: Date | null
+}
+
+/** Newest visits in the window — this is where LIMIT must sit (before any GROUP BY). */
+export async function getRecentVisitSample(
   db: MonetiseDb,
   windowMs: number = 12 * 60 * 60 * 1000,
-): Promise<VisitorDashboardStats> {
+  sampleLimit: number = VISITOR_DASHBOARD_SAMPLE_LIMIT,
+): Promise<RecentVisitSampleRow[]> {
   const since = new Date(Date.now() - windowMs)
-
-  const [visitRow] = await db
+  const sample = await db
     .select({
-      visits: count(serverVisits.id),
-      distinctVisitors: sql<number>`count(distinct ${serverVisits.visitorId})`,
+      visitorId: serverVisits.visitorId,
+      visitedAt: serverVisits.visitedAt,
     })
     .from(serverVisits)
     .where(and(gte(serverVisits.visitedAt, since), isNull(serverVisits.deletedAt)))
+    .orderBy(desc(serverVisits.visitedAt))
+    .limit(sampleLimit)
+
+  return sample
+    .filter((row) => row.visitorId != null)
+    .map((row) => ({ visitorId: row.visitorId!, visitedAt: row.visitedAt }))
+}
+
+/**
+ * Headline counters from a **recent visit sample**, not a full-table COUNT over the window.
+ * Full-window COUNT/COUNT DISTINCT on ~1M rows (no helpful early LIMIT) is what made `/visitors` crawl.
+ */
+export async function getVisitorDashboardStats(
+  db: MonetiseDb,
+  windowMs: number = 12 * 60 * 60 * 1000,
+  sampleLimit: number = VISITOR_DASHBOARD_SAMPLE_LIMIT,
+  sample?: RecentVisitSampleRow[],
+): Promise<VisitorDashboardStats> {
+  const since = new Date(Date.now() - windowMs)
+  const rows = sample ?? (await getRecentVisitSample(db, windowMs, sampleLimit))
+  const distinct = new Set(rows.map((row) => row.visitorId))
 
   const [reportRow] = await db
     .select({ reports: count(monetisationReports.id) })
@@ -312,14 +345,16 @@ export async function getVisitorDashboardStats(
     .where(gte(monetisationReports.reportedAt, since))
 
   return {
-    visitsInWindow: Number(visitRow?.visits ?? 0),
-    distinctVisitorsInWindow: Number(visitRow?.distinctVisitors ?? 0),
+    visitsInWindow: rows.length,
+    distinctVisitorsInWindow: distinct.size,
     reportsInWindow: Number(reportRow?.reports ?? 0),
     windowHours: Math.round(windowMs / (60 * 60 * 1000)),
+    sampleCapped: rows.length >= sampleLimit,
+    sampleLimit,
   }
 }
 
-/** Visitors who ran the Monetise client (have ≥1 monetisation report). */
+/** Visitors who ran the Monetise client (have ≥1 monetisation report). Small table — OK. */
 export async function getLikelyRealVisitors(
   db: MonetiseDb,
   limit: number = 50,
@@ -354,62 +389,84 @@ export async function getLikelyRealVisitors(
 }
 
 /**
- * Top talkers in the window with no monetisation report — likely scrapers / non-JS clients.
+ * Top talkers from a **recent visit sample** (LIMIT before GROUP BY).
+ *
+ * Previous shape scanned every `server_visits` row in the window, grouped everyone,
+ * then applied LIMIT 50 — so the limit never reduced work.
  */
 export async function getHeavyProxyVisitors(
   db: MonetiseDb,
   windowMs: number = 12 * 60 * 60 * 1000,
   limit: number = 50,
+  sampleLimit: number = VISITOR_DASHBOARD_SAMPLE_LIMIT,
+  sample?: RecentVisitSampleRow[],
 ): Promise<HeavyProxyVisitorRow[]> {
-  const since = new Date(Date.now() - windowMs)
-
   const realRows = await db
     .selectDistinct({ visitorId: serverVisits.visitorId })
     .from(monetisationReports)
     .innerJoin(serverVisits, eq(monetisationReports.serverVisitId, serverVisits.id))
 
-  const realIds = realRows
-    .map((row) => row.visitorId)
-    .filter((id): id is number => id != null)
+  const realIds = new Set(
+    realRows.map((row) => row.visitorId).filter((id): id is number => id != null),
+  )
 
-  const whereClause =
-    realIds.length > 0
-      ? and(
-          gte(serverVisits.visitedAt, since),
-          isNull(serverVisits.deletedAt),
-          isNull(visitors.deletedAt),
-          notInArray(visitors.id, realIds),
-        )
-      : and(
-          gte(serverVisits.visitedAt, since),
-          isNull(serverVisits.deletedAt),
-          isNull(visitors.deletedAt),
-        )
+  const rows = sample ?? (await getRecentVisitSample(db, windowMs, sampleLimit))
 
-  const rows = await db
+  const byVisitor = new Map<number, { visitCount: number; lastSeen: Date | null }>()
+  for (const row of rows) {
+    if (realIds.has(row.visitorId)) continue
+    const current = byVisitor.get(row.visitorId)
+    if (!current) {
+      byVisitor.set(row.visitorId, { visitCount: 1, lastSeen: row.visitedAt })
+      continue
+    }
+    current.visitCount += 1
+    if (
+      row.visitedAt &&
+      (!current.lastSeen || row.visitedAt.getTime() > current.lastSeen.getTime())
+    ) {
+      current.lastSeen = row.visitedAt
+    }
+  }
+
+  const topIds = [...byVisitor.entries()]
+    .sort((a, b) => b[1].visitCount - a[1].visitCount)
+    .slice(0, limit)
+
+  if (topIds.length === 0) return []
+
+  const visitorRows = await db
     .select({
-      visitorId: visitors.id,
+      id: visitors.id,
       ip: visitors.ip,
       userAgent: visitors.userAgent,
-      visitCount: count(serverVisits.id),
-      lastSeen: max(serverVisits.visitedAt),
     })
-    .from(serverVisits)
-    .innerJoin(visitors, eq(serverVisits.visitorId, visitors.id))
-    .where(whereClause)
-    .groupBy(visitors.id, visitors.ip, visitors.userAgent)
-    .orderBy(desc(count(serverVisits.id)))
-    .limit(limit)
+    .from(visitors)
+    .where(
+      and(
+        isNull(visitors.deletedAt),
+        sql`${visitors.id} in (${sql.join(
+          topIds.map(([id]) => sql`${id}`),
+          sql`, `,
+        )})`,
+      ),
+    )
 
-  return rows
-    .filter((row) => row.visitorId != null)
-    .map((row) => ({
-      visitorId: row.visitorId!,
-      ip: row.ip,
-      userAgent: row.userAgent,
-      visitCount: Number(row.visitCount),
-      lastSeen: row.lastSeen,
-    }))
+  const visitorById = new Map(visitorRows.map((row) => [row.id!, row]))
+
+  return topIds
+    .map(([visitorId, stats]) => {
+      const visitor = visitorById.get(visitorId)
+      if (!visitor) return null
+      return {
+        visitorId,
+        ip: visitor.ip,
+        userAgent: visitor.userAgent,
+        visitCount: stats.visitCount,
+        lastSeen: stats.lastSeen,
+      }
+    })
+    .filter((row): row is HeavyProxyVisitorRow => row != null)
 }
 
 /** Recent visits for one IP (detail drill-down). */

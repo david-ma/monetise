@@ -153,8 +153,8 @@
 
   {{#if stats}}
   <div class="stats">
-    <div class="stat"><strong>{{stats.visitsInWindow}}</strong> visits ({{stats.windowHours}}h)</div>
-    <div class="stat"><strong>{{stats.distinctVisitorsInWindow}}</strong> distinct IPs ({{stats.windowHours}}h)</div>
+    <div class="stat"><strong>{{stats.visitsInWindow}}</strong> visits in sample{{#if stats.sampleCapped}} (capped at {{stats.sampleLimit}}){{/if}}</div>
+    <div class="stat"><strong>{{stats.distinctVisitorsInWindow}}</strong> distinct IPs in sample</div>
     <div class="stat"><strong>{{stats.reportsInWindow}}</strong> monetisation reports ({{stats.windowHours}}h)</div>
   </div>
   {{/if}}

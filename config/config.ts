@@ -8,7 +8,7 @@ import type { IncomingMessage, ServerResponse } from 'http'
 
 import type { RawWebsiteConfig, Controller, Website } from 'thalia'
 import type { RequestInfo } from 'thalia/server'
-import maxmind, { type CityResponse } from 'maxmind'
+import maxmind, { type CityResponse, type Reader } from 'maxmind'
 import Handlebars from 'handlebars'
 
 import { monetPaintingUrl, parseMonetRequestPath } from './assets'
@@ -29,10 +29,12 @@ import {
   getAllSites,
   getHeavyProxyVisitors,
   getLikelyRealVisitors,
+  getRecentVisitSample,
   getRecentVisitsForIp,
   getVisitorDashboardStats,
   recordMonetisationReport,
   recordServerVisit,
+  VISITOR_DASHBOARD_SAMPLE_LIMIT,
   type MonetiseDb,
 } from '../models/queries'
 
@@ -42,6 +44,22 @@ const unblocker = nodeRequire('unblocker')
 const configDir = path.dirname(fileURLToPath(import.meta.url))
 const rootDir = path.join(configDir, '..')
 const srcDir = path.join(rootDir, 'src')
+
+let cityLookupPromise: Promise<Reader<CityResponse>> | null = null
+function getCityLookup(): Promise<Reader<CityResponse>> {
+  if (!cityLookupPromise) {
+    cityLookupPromise = maxmind.open<CityResponse>(path.join(rootDir, 'data', 'city.mmdb'))
+  }
+  return cityLookupPromise
+}
+
+let visitorsTemplate: Handlebars.TemplateDelegate | null = null
+function getVisitorsTemplate(): Handlebars.TemplateDelegate {
+  if (!visitorsTemplate) {
+    visitorsTemplate = Handlebars.compile(readView('visitors'))
+  }
+  return visitorsTemplate
+}
 
 downloadCitiesData().then((message) => {
   console.log(message)
@@ -323,22 +341,22 @@ const visitorsPage: Controller = (res, _req, website, requestInfo) => {
   const detailIp = typeof requestInfo.query.ip === 'string' ? requestInfo.query.ip.trim() : ''
   const windowMs = proxyRateLimiter.stats().windowMs
 
-  const geoPromise = maxmind.open<CityResponse>(path.join(rootDir, 'data', 'city.mmdb'))
-
   const pagePromise = detailIp
     ? getRecentVisitsForIp(db, detailIp, 50).then((detail) => ({ mode: 'detail' as const, detail }))
-    : Promise.all([
-        getVisitorDashboardStats(db, windowMs),
-        getLikelyRealVisitors(db, 50),
-        getHeavyProxyVisitors(db, windowMs, 50),
-      ]).then(([stats, likelyReal, heavyProxy]) => ({
-        mode: 'index' as const,
-        stats,
-        likelyReal,
-        heavyProxy,
-      }))
+    : getRecentVisitSample(db, windowMs).then((sample) =>
+        Promise.all([
+          getVisitorDashboardStats(db, windowMs, VISITOR_DASHBOARD_SAMPLE_LIMIT, sample),
+          getLikelyRealVisitors(db, 50),
+          getHeavyProxyVisitors(db, windowMs, 50, VISITOR_DASHBOARD_SAMPLE_LIMIT, sample),
+        ]).then(([stats, likelyReal, heavyProxy]) => ({
+          mode: 'index' as const,
+          stats,
+          likelyReal,
+          heavyProxy,
+        })),
+      )
 
-  Promise.all([pagePromise, geoPromise])
+  Promise.all([pagePromise, getCityLookup()])
     .then(([page, lookup]) => {
       const rate = proxyRateLimiter.stats()
       const geo = (ip: string) => {
@@ -351,7 +369,7 @@ const visitorsPage: Controller = (res, _req, website, requestInfo) => {
         }
       }
 
-      const template = Handlebars.compile(readView('visitors'))
+      const template = getVisitorsTemplate()
       res.setHeader('Content-Type', 'text/html; charset=utf-8')
 
       if (page.mode === 'detail') {
