@@ -15,6 +15,13 @@
       "when": 1751472000000,
       "tag": "0001_visit_logging",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1785560204122,
+      "tag": "0002_server-visits-indexes",
+      "breakpoints": true
     }
   ]
 }
