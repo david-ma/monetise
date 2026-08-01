@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url'
 import { Transform } from 'stream'
 import type { IncomingMessage, ServerResponse } from 'http'
 
-import type { RawWebsiteConfig, Controller, Website } from 'thalia'
+import { type RawWebsiteConfig, type Controller, type Website, latestlogs } from 'thalia'
 import type { RequestInfo } from 'thalia/server'
 import maxmind, { type CityResponse, type Reader } from 'maxmind'
 import Handlebars from 'handlebars'
@@ -598,12 +598,17 @@ const config: RawWebsiteConfig = {
     websites,
     visitors: visitorsPage,
     geoip,
+    logs: latestlogs,
     'visit-report': visitReport,
   },
   routes: [
     {
       path: '/visitors',
       password: process.env.VISITORS_PASSWORD || 'hunter2',
+    },
+    {
+      path: '/logs',
+      password: process.env.LOGS_PASSWORD || 'hunter2',
     }
   ]
 }
