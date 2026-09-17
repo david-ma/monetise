@@ -5,6 +5,10 @@
  * Uses legacy url.parse to match unblocker's parsing (WHATWG URL rejects e.g. https:///).
  */
 import { parse as parseUrl } from 'url'
+import { BLOCKED_DOMAINS } from './blocked-domains'
+
+const blockedDomainSuffixes = BLOCKED_DOMAINS.map((domain) => `.${domain}`)
+const blockedDomains = new Set(BLOCKED_DOMAINS)
 
 const BLOCKED_HOSTNAMES = new Set([
   'localhost',
@@ -41,8 +45,12 @@ export function proxyTargetRawFromRequest(reqUrl: string): string | null {
 
 /** Returns a rejection reason, or null when the hostname is allowed. */
 export function validateProxyHostname(hostname: string): string | null {
-  const host = hostname.toLowerCase()
+  const host = hostname.toLowerCase().replace(/\.$/, '')
   if (!host) return 'missing hostname'
+
+  if (blockedDomains.has(host) || blockedDomainSuffixes.some((suffix) => host.endsWith(suffix))) {
+    return 'blocked domain'
+  }
 
   if (BLOCKED_HOSTNAMES.has(host)) return 'blocked hostname'
   if (BLOCKED_HOST_SUFFIXES.some((suffix) => host.endsWith(suffix))) return 'blocked hostname'

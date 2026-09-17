@@ -56,6 +56,20 @@ describe('validateProxyHostname', () => {
 })
 
 describe('rejectProxyRequest', () => {
+  test('blocks configured domains, subdomains, case variants and trailing dots', () => {
+    for (const host of ['academia.edu', 'www.academia.edu', 'uob.academia.edu', 'arxiv.org', 'export.arxiv.org', 'ARXIV.ORG.']) {
+      expect(rejectProxyRequest(`/proxy/https://${host}/paper`)).toBe('blocked domain')
+    }
+  })
+
+  test('matches the hostname rather than URL text or a partial domain', () => {
+    for (const url of ['https://notarxiv.org/', 'https://arxiv.org.example.com/', 'https://example.com/arxiv.org', 'https://example.com/?url=https://academia.edu', 'https://arxiv.org@example.com/']) {
+      expect(rejectProxyRequest(`/proxy/${url}`)).toBeNull()
+    }
+    expect(rejectProxyRequest('/proxy/https://example.com@arxiv.org/')).toBe('blocked domain')
+    expect(rejectProxyRequest('/proxy/arxiv.org/paper')).toBe('blocked domain')
+  })
+
   test('rejects CamoLeak-style localhost SSRF URL', () => {
     expect(
       rejectProxyRequest(

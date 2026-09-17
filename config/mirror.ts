@@ -51,10 +51,31 @@ export async function streamMirrorTarget(
 
   let upstream: Response
   try {
-    upstream = await fetch(upstreamUrl, { redirect: 'follow' })
+    upstream = await fetch(upstreamUrl, { redirect: 'manual' })
   } catch {
     res.statusCode = 502
     res.end('Upstream fetch failed')
+    return
+  }
+
+  // Send redirects back through our route so every destination is checked before fetching.
+  const location = upstream.headers.get('location')
+  if ([301, 302, 303, 307, 308].includes(upstream.status) && location) {
+    await upstream.body?.cancel()
+    let target: URL
+    try {
+      target = new URL(location, upstreamUrl)
+    } catch {
+      res.statusCode = 502
+      res.end('Invalid upstream redirect')
+      return
+    }
+    const path = `/mirror/${target.href}`
+    if (rejectMirrorResponse(res, path)) return
+    res.statusCode = upstream.status
+    setMirrorCors(res)
+    res.setHeader('Location', path)
+    res.end()
     return
   }
 
