@@ -1,0 +1,1 @@
+CREATE INDEX `sites_url_lookup_idx` ON `sites` (`url`(191));
