@@ -22,6 +22,13 @@
       "when": 1785560204122,
       "tag": "0002_server-visits-indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1789643534540,
+      "tag": "0003_sites_url_lookup_index",
+      "breakpoints": true
     }
   ]
 }

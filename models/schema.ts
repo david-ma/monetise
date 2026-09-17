@@ -1,12 +1,21 @@
+import { sql } from 'drizzle-orm'
 import { boolean, index, int, mysqlTable, text, timestamp, varchar } from 'drizzle-orm/mysql-core'
 import { baseTableConfig, vc } from '../node_modules/thalia/models/util'
 
-export const sites = mysqlTable('sites', {
-  ...baseTableConfig,
-  url: vc('url', 2048).notNull().unique(),
-  origin: vc('origin', 2048).notNull().default(''),
-  host: vc('host', 255).notNull().default(''),
-})
+export const sites = mysqlTable(
+  'sites',
+  {
+    ...baseTableConfig,
+    url: vc('url', 2048).notNull().unique(),
+    origin: vc('origin', 2048).notNull().default(''),
+    host: vc('host', 255).notNull().default(''),
+  },
+  (table) => [
+    // Keep full-URL uniqueness and equality; the prefix only narrows reads.
+    // MariaDB's long UNIQUE HASH key did not serve these lookups.
+    index('sites_url_lookup_idx').on(sql`${table.url}(191)`).using('btree'),
+  ],
+)
 
 export const visitors = mysqlTable('visitors', {
   ...baseTableConfig,

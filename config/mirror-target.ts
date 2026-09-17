@@ -1,10 +1,7 @@
 /**
  * Parse and validate targets for GET /mirror/https://… (passthrough image mirror).
  */
-import { parse as parseUrl } from 'url'
-import {
-  validateProxyHostname,
-} from './proxy-target'
+import { rejectParsedHttpUrl } from './proxy-target'
 
 const MIRROR_PREFIX = '/mirror/'
 
@@ -28,10 +25,5 @@ export function rejectMirrorRequest(reqUrl: string): string | null {
   const raw = mirrorTargetRawFromRequest(reqUrl)
   if (raw === null) return 'missing mirror URL'
 
-  const parsed = parseUrl(raw)
-  if (!parsed.protocol || !/^https?:$/i.test(parsed.protocol)) {
-    return 'invalid protocol'
-  }
-
-  return validateProxyHostname(parsed.hostname ?? '')
+  return rejectParsedHttpUrl(raw)
 }

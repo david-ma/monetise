@@ -16,6 +16,18 @@ describe('mirrorTargetRawFromRequest', () => {
 })
 
 describe('rejectMirrorRequest', () => {
+  test('shares the proxy domain block', () => {
+    expect(rejectMirrorRequest('/mirror/https://uob.academia.edu/image.jpg')).toBe('blocked domain')
+    expect(rejectMirrorRequest('/mirror/https://ARXIV.ORG./image.jpg')).toBe('blocked domain')
+    expect(rejectMirrorRequest('/mirror/arxiv.org/image.jpg')).toBe('blocked domain')
+  })
+
+  test('blocks percent-encoded hostnames that fetch would decode', () => {
+    expect(rejectMirrorRequest('/mirror/https://arxiv.org%2e/image.jpg')).toBe('blocked domain')
+    expect(rejectMirrorRequest('/mirror/https://www.arxiv%2eorg/image.jpg')).toBe('blocked domain')
+    expect(rejectMirrorRequest('/mirror/https://arxiv%2Eorg/image.jpg')).toBe('blocked domain')
+  })
+
   test('allows public CDN hosts', () => {
     expect(
       rejectMirrorRequest(
