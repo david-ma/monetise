@@ -3,12 +3,17 @@
  * Rejects localhost, private/link-local IPs, and other non-public targets.
  *
  * Uses legacy url.parse to match unblocker's parsing (WHATWG URL rejects e.g. https:///).
+ * Hostnames are then canonicalised (percent-decode, lowercase, strip trailing dots) and
+ * checked again with the WHATWG parser so /mirror/ fetch cannot see a host the legacy
+ * parse left encoded.
  */
 import { parse as parseUrl } from 'url'
 import { BLOCKED_DOMAINS } from './blocked-domains'
 
 const blockedDomainSuffixes = BLOCKED_DOMAINS.map((domain) => `.${domain}`)
 const blockedDomains = new Set(BLOCKED_DOMAINS)
+const MAX_HOSTNAME_DECODES = 4
+const HARD_BLOCK_REASONS = new Set(['blocked domain', 'blocked hostname', 'blocked IP address'])
 
 const BLOCKED_HOSTNAMES = new Set([
   'localhost',
@@ -43,9 +48,24 @@ export function proxyTargetRawFromRequest(reqUrl: string): string | null {
   return raw
 }
 
+/** Percent-decode, lowercase, and strip trailing dots so encoded hosts match the block list. */
+function canonicalizeHostname(hostname: string): string {
+  let host = hostname
+  for (let i = 0; i < MAX_HOSTNAME_DECODES; i++) {
+    try {
+      const decoded = decodeURIComponent(host)
+      if (decoded === host) break
+      host = decoded
+    } catch {
+      break
+    }
+  }
+  return host.toLowerCase().replace(/\.+$/, '')
+}
+
 /** Returns a rejection reason, or null when the hostname is allowed. */
 export function validateProxyHostname(hostname: string): string | null {
-  const host = hostname.toLowerCase().replace(/\.$/, '')
+  const host = canonicalizeHostname(hostname)
   if (!host) return 'missing hostname'
 
   if (blockedDomains.has(host) || blockedDomainSuffixes.some((suffix) => host.endsWith(suffix))) {
@@ -97,14 +117,39 @@ function isBlockedIPv6(host: string): boolean {
   return false
 }
 
-export function rejectProxyRequest(reqUrl: string): string | null {
-  const raw = proxyTargetRawFromRequest(reqUrl)
-  if (raw === null) return null
+function whatwgHostname(raw: string): string | null {
+  try {
+    return new URL(raw).hostname || null
+  } catch {
+    return null
+  }
+}
 
+function rejectHostCandidates(hosts: string[]): string | null {
+  const reasons = hosts.map((host) => validateProxyHostname(host))
+  const hardBlock = reasons.find((reason) => reason !== null && HARD_BLOCK_REASONS.has(reason))
+  if (hardBlock) return hardBlock
+  if (reasons.some((reason) => reason === null)) return null
+  return reasons[0] ?? 'missing hostname'
+}
+
+/** Protocol + hostname guards shared by /proxy/ and /mirror/. */
+export function rejectParsedHttpUrl(raw: string): string | null {
   const parsed = parseUrl(raw)
   if (!parsed.protocol || !/^https?:$/i.test(parsed.protocol)) {
     return 'invalid protocol'
   }
 
-  return validateProxyHostname(parsed.hostname ?? '')
+  // url.parse treats `%` as the end of the host (`arxiv%2eorg` → `arxiv`).
+  // WHATWG fetch decodes `%2e` and would load the real host, so check both.
+  const hosts = [parsed.hostname ?? '']
+  const fetchHost = whatwgHostname(raw)
+  if (fetchHost) hosts.push(fetchHost)
+  return rejectHostCandidates(hosts)
+}
+
+export function rejectProxyRequest(reqUrl: string): string | null {
+  const raw = proxyTargetRawFromRequest(reqUrl)
+  if (raw === null) return null
+  return rejectParsedHttpUrl(raw)
 }

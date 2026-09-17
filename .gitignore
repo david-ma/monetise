@@ -9,3 +9,4 @@ data
 !data/smugmug-monet.json
 !tmp/logs/.gitkeep
 tmp
+docs
