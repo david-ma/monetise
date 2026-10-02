@@ -5,6 +5,7 @@ import { parse as parseUrl, format as formatUrl } from 'url'
 import type { IncomingMessage } from 'http'
 import type { RequestInfo } from 'thalia/server'
 import { proxyTargetRawFromRequest } from './proxy-target'
+import { mirrorTargetRawFromRequest } from './mirror-target'
 
 export type VisitKind =
   | 'proxy_document'
@@ -12,6 +13,8 @@ export type VisitKind =
   | 'homepage_goto'
   | 'homepage_probe'
   | 'proxy_blocked'
+  | 'mirror_request'
+  | 'mirror_blocked'
 
 export type NormalisedVisitTarget = {
   targetUrl: string
@@ -28,7 +31,6 @@ export type VisitLogDecision = {
 }
 
 const LOG_SKIP_PATH_PREFIXES = [
-  '/mirror',
   '/monet',
   '/assets',
   '/css',
@@ -198,6 +200,25 @@ export function classifyVisit(
   const pathname = requestInfo.pathname || '/'
   const requestPath = req.url ?? pathname
   const query = requestInfo.query ?? {}
+
+  // Mirror is a byte passthrough as well as a page proxy: log downloads and assets,
+  // even when no browser document headers are present. Upstream query keys are not probes.
+  if (pathname === '/mirror' || pathname.startsWith('/mirror/')) {
+    const method = (req.method ?? 'GET').toUpperCase()
+    const kind = overrides?.kind === 'mirror_blocked' ? 'mirror_blocked' : 'mirror_request'
+    if (!['GET', 'HEAD'].includes(method) || pathname.startsWith('/mirror/client/')) {
+      return { log: false, kind, target: null, requestPath }
+    }
+    const raw = mirrorTargetRawFromRequest(requestPath)
+    const target = raw ? normaliseUpstreamUrl(raw) : normaliseLocalPath(pathname, '')
+    return {
+      log: Boolean(target),
+      kind,
+      target,
+      requestPath,
+      blockReason: overrides?.blockReason,
+    }
+  }
 
   if (overrides?.kind === 'proxy_blocked') {
     const raw = overrides.forceTargetUrl ?? requestPath

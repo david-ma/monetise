@@ -13,7 +13,8 @@ import Handlebars from 'handlebars'
 
 import { monetPaintingUrl, parseMonetRequestPath } from './assets'
 import { rejectProxyRequest } from './proxy-target'
-import { mirrorTargetRawFromRequest } from './mirror-target'
+import { blockFiletypeResponse, type FiletypeLoggedRequest } from './proxy-filetypes'
+import { mirrorTargetRawFromRequest, rejectMirrorRequest } from './mirror-target'
 import {
   mirrorCorsMiddleware,
   rejectMirrorResponse,
@@ -28,6 +29,7 @@ import { paintings, serverVisits, sites, visitors as visitorsTable, monetisation
 import {
   getAllSites,
   getHeavyProxyVisitors,
+  getMirrorVisitors,
   getLikelyRealVisitors,
   getRecentVisitSample,
   getRecentVisitsForIp,
@@ -69,6 +71,7 @@ const unblockerConfig = {
   // Omit `host` so unblocker uses the request Host (www vs apex) for referer recovery.
   prefix: '/proxy/',
   responseMiddleware: [
+    blockFiletypeResponse,
     noStoreProxyMiddleware,
     pageInjectionMiddleware,
     clientScriptsInjector('/proxy/'),
@@ -290,6 +293,13 @@ const proxy: Controller = (res, req, website, requestInfo) => {
     void siteVisit(website, req, requestInfo).catch((error) =>
       logVisitWriteError('siteVisit failed:', error),
     )
+    ;(req as FiletypeLoggedRequest).onBlockedFiletype = (reason, upstreamUrl) => {
+      void maybeRecordVisit(website, req, requestInfo, {
+        kind: 'proxy_blocked',
+        blockReason: reason,
+        forceTargetUrl: upstreamUrl,
+      }).catch((error) => logVisitWriteError('Failed to record blocked proxy response:', error))
+    }
     handleRequest(req, res, (err?: Error) => {
       if (!err) return
       console.error('Proxy error:', req.url, err)
@@ -348,11 +358,13 @@ const visitorsPage: Controller = (res, _req, website, requestInfo) => {
           getVisitorDashboardStats(db, windowMs, VISITOR_DASHBOARD_SAMPLE_LIMIT, sample),
           getLikelyRealVisitors(db, 50),
           getHeavyProxyVisitors(db, windowMs, 50, VISITOR_DASHBOARD_SAMPLE_LIMIT, sample),
-        ]).then(([stats, likelyReal, heavyProxy]) => ({
+          getMirrorVisitors(db, windowMs, 50, VISITOR_DASHBOARD_SAMPLE_LIMIT, sample),
+        ]).then(([stats, likelyReal, heavyProxy, mirrorVisitors]) => ({
           mode: 'index' as const,
           stats,
           likelyReal,
           heavyProxy,
+          mirrorVisitors,
         })),
       )
 
@@ -414,6 +426,13 @@ const visitorsPage: Controller = (res, _req, website, requestInfo) => {
             uaShort: (row.userAgent || '').slice(0, 80),
             ipHref: `/visitors?ip=${encodeURIComponent(row.ip)}`,
           })),
+          mirrorVisitors: page.mirrorVisitors.map((row) => ({
+            ...row,
+            ...geo(row.ip),
+            lastSeen: row.lastSeen ? row.lastSeen.toLocaleString('en-AU') : '',
+            uaShort: (row.userAgent || '').slice(0, 80),
+            ipHref: `/visitors?ip=${encodeURIComponent(row.ip)}`,
+          })),
           rateLimit: {
             ...rate,
             windowLabel: `${Math.round(rate.windowMs / (60 * 60 * 1000))}h`,
@@ -457,7 +476,7 @@ function monetAsset(res: ServerResponse, req: IncomingMessage): void {
 
 const monetAssetController: Controller = (res, req) => monetAsset(res, req)
 
-const mirror: Controller = (res, req) => {
+const mirror: Controller = (res, req, website, requestInfo) => {
   let url = req.url ?? ''
   const sections = url.split('/mirror/')
   url = req.url = `${sections[0]}/mirror/${sections.pop()}`
@@ -468,6 +487,11 @@ const mirror: Controller = (res, req) => {
     return
   }
 
+  const reason = rejectMirrorRequest(url)
+  void maybeRecordVisit(website, req, requestInfo, reason ? {
+    kind: 'mirror_blocked',
+    blockReason: reason,
+  } : undefined).catch((error) => logVisitWriteError('Failed to record mirror visit:', error))
   if (rejectMirrorResponse(res, url)) return
 
   if (sections.length > 2) {

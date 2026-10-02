@@ -10,6 +10,67 @@
 import { parse as parseUrl } from 'url'
 import { BLOCKED_DOMAINS } from './blocked-domains'
 
+/** Toggle filetype blocking on /proxy/ only. Restart after changing these settings. */
+export const BLOCK_FILETYPES = true
+
+/** Extensions (without dots) and their MIME types. Add/remove entries here. */
+export const BLOCKED_FILETYPES: Record<string, readonly string[]> = {
+  pdf: ['application/pdf', 'application/x-pdf'],
+  // zip: ['application/zip', 'application/x-zip-compressed'],
+}
+
+function decodeFilePath(value: string): string {
+  for (let i = 0; i < 4; i++) {
+    try {
+      const decoded = decodeURIComponent(value)
+      if (decoded === value) break
+      value = decoded
+    } catch {
+      break
+    }
+  }
+  return value
+}
+
+export function blockedFiletypeFromFilename(
+  filename: string,
+  enabled = BLOCK_FILETYPES,
+  filetypes = BLOCKED_FILETYPES,
+): string | null {
+  if (!enabled) return null
+  const lower = decodeFilePath(filename).trim().toLowerCase()
+  return Object.keys(filetypes).find((extension) => lower.endsWith(`.${extension}`)) ?? null
+}
+
+export function blockedFiletypeFromUrl(raw: string, enabled = BLOCK_FILETYPES): string | null {
+  return blockedFiletypeFromFilename(parseUrl(raw).pathname ?? '', enabled)
+}
+
+/** Catch extensionless downloads using the upstream type or suggested download filename. */
+export function blockedFiletypeFromHeaders(
+  headers: Record<string, string | string[] | undefined>,
+  enabled = BLOCK_FILETYPES,
+  filetypes = BLOCKED_FILETYPES,
+): string | null {
+  if (!enabled) return null
+  const types = [headers['content-type']].flat().filter((value): value is string => !!value)
+  for (const value of types) {
+    const mime = value.split(';')[0].trim().toLowerCase()
+    const extension = Object.keys(filetypes).find((key) => filetypes[key].includes(mime))
+    if (extension) return extension
+  }
+  const dispositions = [headers['content-disposition']].flat()
+  for (const value of dispositions) {
+    if (!value) continue
+    // Handles both filename="paper.pdf" and RFC 5987 filename*=UTF-8''paper%2Epdf.
+    for (const match of value.matchAll(/(?:^|;)\s*filename\*?\s*=\s*(?:"([^"]*)"|([^;]*))/gi)) {
+      const extension = blockedFiletypeFromFilename(match[1] ?? match[2], enabled, filetypes)
+      if (extension) return extension
+    }
+  }
+  return null
+}
+
 const blockedDomainSuffixes = BLOCKED_DOMAINS.map((domain) => `.${domain}`)
 const blockedDomains = new Set(BLOCKED_DOMAINS)
 const MAX_HOSTNAME_DECODES = 4
@@ -148,8 +209,11 @@ export function rejectParsedHttpUrl(raw: string): string | null {
   return rejectHostCandidates(hosts)
 }
 
-export function rejectProxyRequest(reqUrl: string): string | null {
+export function rejectProxyRequest(reqUrl: string, blockFiletypes = BLOCK_FILETYPES): string | null {
   const raw = proxyTargetRawFromRequest(reqUrl)
   if (raw === null) return null
-  return rejectParsedHttpUrl(raw)
+  const hostReason = rejectParsedHttpUrl(raw)
+  if (hostReason) return hostReason
+  const filetype = blockedFiletypeFromUrl(raw, blockFiletypes)
+  return filetype ? `blocked filetype: ${filetype}` : null
 }

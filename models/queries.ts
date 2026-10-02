@@ -262,7 +262,8 @@ export type VisitorWithVisits = Visitor & {
 }
 
 function visitBadge(kind: string, hasReport: boolean): VisitorVisitRow['badge'] {
-  if (kind === 'homepage_probe' || kind === 'proxy_blocked') return kind === 'proxy_blocked' ? 'blocked' : 'probe'
+  if (kind === 'proxy_blocked' || kind === 'mirror_blocked') return 'blocked'
+  if (kind === 'homepage_probe') return 'probe'
   if (hasReport) return 'browser'
   return 'request'
 }
@@ -301,6 +302,7 @@ export const VISITOR_DASHBOARD_SAMPLE_LIMIT = 5000
 export type RecentVisitSampleRow = {
   visitorId: number
   visitedAt: Date | null
+  kind: string
 }
 
 /** Newest visits in the window — this is where LIMIT must sit (before any GROUP BY). */
@@ -314,6 +316,7 @@ export async function getRecentVisitSample(
     .select({
       visitorId: serverVisits.visitorId,
       visitedAt: serverVisits.visitedAt,
+      kind: serverVisits.kind,
     })
     .from(serverVisits)
     .where(and(gte(serverVisits.visitedAt, since), isNull(serverVisits.deletedAt)))
@@ -322,7 +325,7 @@ export async function getRecentVisitSample(
 
   return sample
     .filter((row) => row.visitorId != null)
-    .map((row) => ({ visitorId: row.visitorId!, visitedAt: row.visitedAt }))
+    .map((row) => ({ visitorId: row.visitorId!, visitedAt: row.visitedAt, kind: row.kind }))
 }
 
 /**
@@ -412,9 +415,34 @@ export async function getHeavyProxyVisitors(
 
   const rows = sample ?? (await getRecentVisitSample(db, windowMs, sampleLimit))
 
+  return rankVisitorSample(db, rows.filter((row) =>
+    !realIds.has(row.visitorId) && !isMirrorVisit(row.kind),
+  ), limit)
+}
+
+function isMirrorVisit(kind: string): boolean {
+  return kind === 'mirror_request' || kind === 'mirror_blocked'
+}
+
+/** Mirror usage stays separate, including IPs that also have Monetise browser reports. */
+export async function getMirrorVisitors(
+  db: MonetiseDb,
+  windowMs: number = 12 * 60 * 60 * 1000,
+  limit: number = 50,
+  sampleLimit: number = VISITOR_DASHBOARD_SAMPLE_LIMIT,
+  sample?: RecentVisitSampleRow[],
+): Promise<HeavyProxyVisitorRow[]> {
+  const rows = sample ?? (await getRecentVisitSample(db, windowMs, sampleLimit))
+  return rankVisitorSample(db, rows.filter((row) => isMirrorVisit(row.kind)), limit)
+}
+
+async function rankVisitorSample(
+  db: MonetiseDb,
+  rows: RecentVisitSampleRow[],
+  limit: number,
+): Promise<HeavyProxyVisitorRow[]> {
   const byVisitor = new Map<number, { visitCount: number; lastSeen: Date | null }>()
   for (const row of rows) {
-    if (realIds.has(row.visitorId)) continue
     const current = byVisitor.get(row.visitorId)
     if (!current) {
       byVisitor.set(row.visitorId, { visitCount: 1, lastSeen: row.visitedAt })

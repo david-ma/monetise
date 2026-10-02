@@ -29,6 +29,40 @@ describe('isProbeQuery', () => {
 })
 
 describe('classifyVisit', () => {
+  function mirrorDecision(path: string, method = 'GET', overrides?: Parameters<typeof classifyVisit>[2]) {
+    return classifyVisit(
+      { method, url: path, headers: { 'sec-fetch-dest': 'empty' } } as unknown as import('http').IncomingMessage,
+      { pathname: path.split('?')[0], query: { file: 'paper.pdf' } } as unknown as import('thalia/server').RequestInfo,
+      overrides,
+    )
+  }
+
+  test('logs mirror downloads and subresources without document headers or probe misclassification', () => {
+    for (const path of ['paper.pdf', 'photo.jpg', 'page?file=paper.pdf']) {
+      const decision = mirrorDecision(`/mirror/https://example.com/${path}`)
+      expect(decision.log).toBe(true)
+      expect(decision.kind).toBe('mirror_request')
+      expect(decision.target?.targetUrl).toBe(`https://example.com/${path}`)
+      expect(decision.requestPath).toBe(`/mirror/https://example.com/${path}`)
+    }
+    expect(mirrorDecision('/mirror/https://example.com/paper.pdf', 'HEAD').log).toBe(true)
+  })
+
+  test('excludes mirror preflights and local client scripts', () => {
+    expect(mirrorDecision('/mirror/https://example.com/', 'OPTIONS').log).toBe(false)
+    expect(mirrorDecision('/mirror/client/unblocker-client.js').log).toBe(false)
+  })
+
+  test('logs blocked mirror targets with the reason and upstream URL', () => {
+    const decision = mirrorDecision('/mirror/https://localhost/paper.pdf', 'GET', {
+      kind: 'mirror_blocked', blockReason: 'blocked hostname',
+    })
+    expect(decision.log).toBe(true)
+    expect(decision.kind).toBe('mirror_blocked')
+    expect(decision.blockReason).toBe('blocked hostname')
+    expect(decision.target?.targetUrl).toBe('https://localhost/paper.pdf')
+  })
+
   test('flags homepage probes', () => {
     const decision = classifyVisit(
       { method: 'GET', headers: { accept: 'text/html' } } as import('http').IncomingMessage,

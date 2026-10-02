@@ -2,6 +2,7 @@
 
 <head>
   <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Visitors</title>
   <style>
     body {
@@ -108,6 +109,10 @@
     a {
       color: #0645ad;
     }
+
+    .table-scroll {
+      overflow-x: auto;
+    }
   </style>
 </head>
 
@@ -213,6 +218,37 @@
     </tr>
     {{/each}}
   </table>
+  <h2>Mirror usage</h2>
+  <p class="muted">Top IPs using /mirror in the recent {{stats.windowHours}}h sample, including pages,
+    downloads, resources and blocked requests. Client scripts and OPTIONS preflights are excluded.
+    Click an IP for target URLs and block reasons.{{#if stats.sampleCapped}} Counts are capped by the
+    shared {{stats.sampleLimit}}-visit sample.{{/if}}</p>
+  <div class="table-scroll">
+  <table>
+    <tr>
+      <th>ip</th>
+      <th>requests</th>
+      <th>last seen</th>
+      <th>country</th>
+      <th>city</th>
+      <th>user-agent</th>
+    </tr>
+    {{#each mirrorVisitors}}
+    <tr>
+      <td><a href="{{ipHref}}">{{ip}}</a></td>
+      <td>{{visitCount}}</td>
+      <td>{{lastSeen}}</td>
+      <td>{{country}}</td>
+      <td>{{city}}</td>
+      <td class="muted">{{uaShort}}</td>
+    </tr>
+    {{else}}
+    <tr>
+      <td colspan="6">No mirror requests in this sample.</td>
+    </tr>
+    {{/each}}
+  </table>
+  </div>
   {{/if}}
 </body>
 
