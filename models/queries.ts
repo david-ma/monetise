@@ -15,6 +15,23 @@ import {
 
 export type MonetiseDb = MySql2Database<any>
 
+/** Lock contention with retention is transient; each retry starts a new transaction. */
+export async function withTrafficTransaction<T>(db: MonetiseDb, work: (tx: MonetiseDb) => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try { return await db.transaction(work) } catch (error) {
+      let cause: unknown = error
+      let retry = false
+      for (let depth = 0; depth < 6 && cause && typeof cause === 'object'; depth++) {
+        const detail = cause as { errno?: number; cause?: unknown }
+        if (detail.errno === 1213 || detail.errno === 1205) { retry = true; break }
+        cause = detail.cause
+      }
+      if (!retry || attempt >= 2) throw error
+      await new Promise((resolve) => setTimeout(resolve, 10 * (attempt + 1)))
+    }
+  }
+}
+
 /**
  * True when an error (or any error in its `cause` chain) is MySQL
  * `ER_DUP_ENTRY` (errno 1062). Used for check-then-insert races on unique keys.
@@ -91,6 +108,7 @@ export async function findOrCreateSite(
     .from(sites)
     .where(and(eq(sites.url, targetUrl), isNull(sites.deletedAt)))
     .limit(1)
+    .for('update')
 
   if (existing[0]) {
     return existing[0]
@@ -116,7 +134,7 @@ export async function findOrCreateSite(
     }
   }
 
-  const fallback = await db.select().from(sites).where(eq(sites.url, targetUrl)).limit(1)
+  const fallback = await db.select().from(sites).where(eq(sites.url, targetUrl)).limit(1).for('update')
   if (!fallback[0]) {
     throw new Error(`Failed to find or create site for ${targetUrl}`)
   }
@@ -133,6 +151,7 @@ export async function findOrCreateVisitor(
     .from(visitors)
     .where(and(eq(visitors.ip, ip), isNull(visitors.deletedAt)))
     .limit(1)
+    .for('update')
 
   if (existing[0]) {
     return maybeUpdateVisitorUserAgent(db, existing[0], userAgent)
@@ -157,7 +176,7 @@ export async function findOrCreateVisitor(
     }
   }
 
-  const fallback = await db.select().from(visitors).where(eq(visitors.ip, ip)).limit(1)
+  const fallback = await db.select().from(visitors).where(eq(visitors.ip, ip)).limit(1).for('update')
   if (!fallback[0]) {
     throw new Error(`Failed to find or create visitor for ${ip}`)
   }
@@ -165,6 +184,16 @@ export async function findOrCreateVisitor(
 }
 
 export async function recordServerVisit(
+  db: MonetiseDb,
+  input: RecordServerVisitInput,
+  ip: string,
+  userAgent: string,
+): Promise<{ visitToken?: string; serverVisitId?: number }> {
+  // Hold parent locks until the visit exists; orphan retention runs concurrently.
+  return withTrafficTransaction(db, (tx) => recordServerVisitInTransaction(tx, input, ip, userAgent))
+}
+
+async function recordServerVisitInTransaction(
   db: MonetiseDb,
   input: RecordServerVisitInput,
   ip: string,
@@ -196,11 +225,19 @@ export async function recordMonetisationReport(
   db: MonetiseDb,
   input: MonetisationReportInput,
 ): Promise<MonetisationReport | null> {
+  return withTrafficTransaction(db, (tx) => recordMonetisationReportInTransaction(tx, input))
+}
+
+async function recordMonetisationReportInTransaction(
+  db: MonetiseDb,
+  input: MonetisationReportInput,
+): Promise<MonetisationReport | null> {
   const visitRows = await db
     .select()
     .from(serverVisits)
     .where(and(eq(serverVisits.visitToken, input.visitToken), isNull(serverVisits.deletedAt)))
     .limit(1)
+    .for('update')
 
   const serverVisit = visitRows[0]
   if (!serverVisit?.id) {

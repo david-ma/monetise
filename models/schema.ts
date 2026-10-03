@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { boolean, index, int, mysqlTable, text, timestamp, varchar } from 'drizzle-orm/mysql-core'
+import { bigint, boolean, date, index, int, mysqlTable, primaryKey, text, timestamp, varchar } from 'drizzle-orm/mysql-core'
 import { baseTableConfig, vc } from '../node_modules/thalia/models/util'
 
 export const sites = mysqlTable(
@@ -77,6 +77,29 @@ export const paintings = mysqlTable('paintings', {
   url: text('url'),
   imageKey: vc('image_key', 255),
   filename: vc('filename', 512),
+})
+
+/** Additive event totals only: these are not distinct visitor/person counts. */
+export const trafficDailySummaries = mysqlTable('traffic_daily_summaries', {
+  day: date('day', { mode: 'string' }).notNull(),
+  kind: varchar('kind', { length: 64 }).notNull(),
+  visits: bigint('visits', { mode: 'bigint', unsigned: true }).notNull().default(sql`0`),
+  reports: bigint('reports', { mode: 'bigint', unsigned: true }).notNull().default(sql`0`),
+  imagesScanned: bigint('images_scanned', { mode: 'bigint', unsigned: true }).notNull().default(sql`0`),
+  imagesReplaced: bigint('images_replaced', { mode: 'bigint', unsigned: true }).notNull().default(sql`0`),
+  backgroundsReplaced: bigint('backgrounds_replaced', { mode: 'bigint', unsigned: true }).notNull().default(sql`0`),
+  canvasesReplaced: bigint('canvases_replaced', { mode: 'bigint', unsigned: true }).notNull().default(sql`0`),
+  skippedAlreadyMonetised: bigint('skipped_already_monetised', { mode: 'bigint', unsigned: true }).notNull().default(sql`0`),
+  pageLoadMsSum: bigint('page_load_ms_sum', { mode: 'bigint', unsigned: true }).notNull().default(sql`0`),
+  pageLoadSamples: bigint('page_load_samples', { mode: 'bigint', unsigned: true }).notNull().default(sql`0`),
+  domContentLoadedMsSum: bigint('dom_content_loaded_ms_sum', { mode: 'bigint', unsigned: true }).notNull().default(sql`0`),
+  domContentLoadedSamples: bigint('dom_content_loaded_samples', { mode: 'bigint', unsigned: true }).notNull().default(sql`0`),
+}, (table) => [primaryKey({ columns: [table.day, table.kind] })])
+
+/** Two bounded keyset scans, resumed across scheduled runs. */
+export const trafficRetentionCursors = mysqlTable('traffic_retention_cursors', {
+  tableName: varchar('table_name', { length: 32 }).primaryKey(),
+  lastId: int('last_id').notNull().default(0),
 })
 
 export type Site = typeof sites.$inferSelect

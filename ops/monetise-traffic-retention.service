@@ -1,0 +1,17 @@
+[Unit]
+Description=Summarise and prune Monetise traffic older than 30 days
+After=network.target docker.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/usr/local/dev/monetise
+# Review the existing Bun location and DB routing on the target before installing.
+Environment="PATH=/home/ubuntu/.bun/bin:/usr/local/bin:/usr/bin:/bin"
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/env bun scripts/traffic-retention.ts --apply --days=30 --batch-size=1000 --max-batches=100
+TimeoutStartSec=15min
+Nice=10
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true

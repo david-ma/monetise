@@ -29,6 +29,13 @@
       "when": 1789643534540,
       "tag": "0003_sites_url_lookup_index",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1790954513716,
+      "tag": "0004_traffic_retention",
+      "breakpoints": true
     }
   ]
 }
