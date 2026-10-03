@@ -5,7 +5,12 @@ import { join } from 'node:path'
 import { createConnection, type Connection } from 'mysql2/promise'
 import { drizzle } from 'drizzle-orm/mysql2'
 import { archiveEventBatch, parseRetentionOptions, pruneOrphanBatch, runRetention } from '../../models/traffic-retention'
-import { recordMonetisationReport, recordServerVisit, type MonetiseDb } from '../../models/queries'
+import {
+  convertServerVisitToBlocked,
+  recordMonetisationReport,
+  recordServerVisit,
+  type MonetiseDb,
+} from '../../models/queries'
 
 // Explicit opt-in. No env database URLs, default option files, TCP or existing
 // datadirs are used. Only an already installed server and a fresh temp directory.
@@ -106,6 +111,34 @@ describe.skipIf(!enabled)('traffic retention in an isolated MariaDB', () => {
     expect(visit.serverVisitId).toBeGreaterThan(0)
     const report = await recordMonetisationReport(orm, { visitToken: 'writer-test', pageUrl: 'https://example.test/new', imagesScanned: 2, imagesReplaced: 1, backgroundsReplaced: 0, canvasesReplaced: 0, skippedAlreadyMonetised: 0, clientScriptVersion: 'test' })
     expect(report?.serverVisitId).toBe(visit.serverVisitId)
+  })
+
+  test('convertServerVisitToBlocked flips proxy_document and clears the visit token', async () => {
+    const orm = drizzle(db!) as MonetiseDb
+    const visit = await recordServerVisit(
+      orm,
+      {
+        targetUrl: 'https://cdn.example.test/api/proxy/file.pdf',
+        origin: 'https://cdn.example.test',
+        host: 'cdn.example.test',
+        kind: 'proxy_document',
+        requestPath: '/proxy/https://cdn.example.test/api/proxy/file.pdf',
+        visitToken: 'blocked-convert-token',
+      },
+      '192.0.2.10',
+      'Fixture browser',
+    )
+    expect(visit.serverVisitId).toBeGreaterThan(0)
+    expect(await convertServerVisitToBlocked(orm, 'blocked-convert-token', 'blocked filetype: pdf')).toBe(true)
+    expect(await convertServerVisitToBlocked(orm, 'blocked-convert-token', 'blocked filetype: pdf')).toBe(false)
+
+    const [rows] = await db!.query<any[]>(
+      'SELECT kind, block_reason, visit_token FROM server_visits WHERE id = ?',
+      [visit.serverVisitId],
+    )
+    expect(rows[0].kind).toBe('proxy_blocked')
+    expect(rows[0].block_reason).toBe('blocked filetype: pdf')
+    expect(rows[0].visit_token).toBeNull()
   })
 
   test('locked parent survives orphan collection when an in-flight writer adds a visit', async () => {

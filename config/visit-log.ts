@@ -222,17 +222,24 @@ export function classifyVisit(
 
   if (overrides?.kind === 'proxy_blocked') {
     const raw = overrides.forceTargetUrl ?? requestPath
-    const proxyRaw = proxyTargetRawFromRequest(
-      raw.includes('/proxy/') ? raw : `/proxy/${raw.replace(/^https?:\/\//, 'https://')}`,
-    )
-    const target =
-      (proxyRaw ? normaliseUpstreamUrl(proxyRaw) : null) ??
-      normaliseLocalPath(
-        pathname,
-        requestPath.includes('?') ? requestPath.slice(requestPath.indexOf('?')) : '',
+    // Absolute upstream URLs (from unblocker) must not go through proxyTargetRawFromRequest:
+    // an upstream path containing `/proxy/` would be truncated as if it were a Monetise request.
+    let target: NormalisedVisitTarget | null
+    if (/^https?:\/\//i.test(raw)) {
+      target = normaliseUpstreamUrl(raw)
+    } else {
+      const proxyRaw = proxyTargetRawFromRequest(
+        raw.includes('/proxy/') ? raw : `/proxy/${raw.replace(/^https?:\/\//, 'https://')}`,
       )
+      target =
+        (proxyRaw ? normaliseUpstreamUrl(proxyRaw) : null) ??
+        normaliseLocalPath(
+          pathname,
+          requestPath.includes('?') ? requestPath.slice(requestPath.indexOf('?')) : '',
+        )
+    }
     return {
-      log: true,
+      log: Boolean(target),
       kind: 'proxy_blocked',
       target,
       requestPath,

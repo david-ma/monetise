@@ -193,6 +193,40 @@ export async function recordServerVisit(
   return withTrafficTransaction(db, (tx) => recordServerVisitInTransaction(tx, input, ip, userAgent))
 }
 
+/**
+ * When a proxied document navigation is later MIME/filetype-blocked, flip the
+ * already-inserted proxy_document row to proxy_blocked instead of inserting a
+ * second visit. Clears the unused visitToken (page HTML never reached the client).
+ */
+export async function convertServerVisitToBlocked(
+  db: MonetiseDb,
+  visitToken: string,
+  blockReason: string,
+): Promise<boolean> {
+  return withTrafficTransaction(db, async (tx) => {
+    const rows = await tx
+      .select({ id: serverVisits.id, kind: serverVisits.kind })
+      .from(serverVisits)
+      .where(and(eq(serverVisits.visitToken, visitToken), isNull(serverVisits.deletedAt)))
+      .limit(1)
+      .for('update')
+
+    const row = rows[0]
+    if (!row?.id || row.kind !== 'proxy_document') return false
+
+    await tx
+      .update(serverVisits)
+      .set({
+        kind: 'proxy_blocked',
+        blockReason,
+        visitToken: null,
+      })
+      .where(eq(serverVisits.id, row.id))
+
+    return true
+  })
+}
+
 async function recordServerVisitInTransaction(
   db: MonetiseDb,
   input: RecordServerVisitInput,

@@ -139,6 +139,47 @@ describe('classifyVisit', () => {
     expect(decision.kind).toBe('proxy_blocked')
     expect(decision.blockReason).toBe('missing hostname')
   })
+
+  test('proxy_blocked absolute upstream URLs keep paths that contain /proxy/', () => {
+    const decision = classifyVisit(
+      {
+        method: 'GET',
+        url: '/proxy/https://cdn.example.com/api/proxy/file.pdf',
+        headers: { 'sec-fetch-dest': 'document' },
+      } as unknown as import('http').IncomingMessage,
+      {
+        pathname: '/proxy/https://cdn.example.com/api/proxy/file.pdf',
+        query: {},
+      } as unknown as import('thalia/server').RequestInfo,
+      {
+        kind: 'proxy_blocked',
+        blockReason: 'blocked filetype: pdf',
+        forceTargetUrl: 'https://cdn.example.com/api/proxy/file.pdf',
+      },
+    )
+    expect(decision.log).toBe(true)
+    expect(decision.kind).toBe('proxy_blocked')
+    expect(decision.target?.host).toBe('cdn.example.com')
+    expect(decision.target?.targetUrl).toBe('https://cdn.example.com/api/proxy/file.pdf')
+  })
+
+  test('proxy_blocked Monetise request paths still strip the /proxy/ prefix', () => {
+    const decision = classifyVisit(
+      { method: 'GET', headers: {} } as import('http').IncomingMessage,
+      {
+        pathname: '/proxy/https://example.com/paper.pdf',
+        query: {},
+      } as unknown as import('thalia/server').RequestInfo,
+      {
+        kind: 'proxy_blocked',
+        blockReason: 'blocked filetype: pdf',
+        forceTargetUrl: '/proxy/https://example.com/paper.pdf',
+      },
+    )
+    expect(decision.log).toBe(true)
+    expect(decision.target?.targetUrl).toBe('https://example.com/paper.pdf')
+    expect(decision.target?.host).toBe('example.com')
+  })
 })
 
 describe('normaliseLocalPath', () => {

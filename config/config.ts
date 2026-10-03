@@ -34,6 +34,7 @@ import {
   getRecentVisitSample,
   getRecentVisitsForIp,
   getVisitorDashboardStats,
+  convertServerVisitToBlocked,
   recordMonetisationReport,
   recordServerVisit,
   VISITOR_DASHBOARD_SAMPLE_LIMIT,
@@ -158,7 +159,20 @@ function rejectBlockedProxyTarget(
   return true
 }
 
-type MonetiseRequest = IncomingMessage & { monetiseVisitToken?: string }
+type MonetiseRequest = IncomingMessage & {
+  monetiseVisitToken?: string
+  /** Serialises document insert vs filetype-block conversion for one request. */
+  monetiseVisitWrite?: Promise<unknown>
+}
+
+function enqueueVisitWrite(req: MonetiseRequest, work: () => Promise<unknown>): Promise<unknown> {
+  const next = (req.monetiseVisitWrite ?? Promise.resolve()).then(work, work)
+  req.monetiseVisitWrite = next.then(
+    () => undefined,
+    () => undefined,
+  )
+  return next
+}
 
 async function maybeRecordVisit(
   website: Website,
@@ -196,6 +210,35 @@ async function maybeRecordVisit(
   return visitToken
 }
 
+/** Prefer converting the prior proxy_document row; otherwise insert proxy_blocked. */
+async function recordBlockedProxyResponse(
+  website: Website,
+  req: IncomingMessage,
+  requestInfo: RequestInfo,
+  reason: string,
+  upstreamUrl: string,
+): Promise<void> {
+  const db = monetiseDb(website)
+  if (!db) return
+
+  const monetiseReq = req as MonetiseRequest
+  await enqueueVisitWrite(monetiseReq, async () => {
+    const existingToken = monetiseReq.monetiseVisitToken
+    if (existingToken) {
+      const converted = await convertServerVisitToBlocked(db, existingToken, reason)
+      if (converted) {
+        monetiseReq.monetiseVisitToken = undefined
+        return
+      }
+    }
+    await maybeRecordVisit(website, req, requestInfo, {
+      kind: 'proxy_blocked',
+      blockReason: reason,
+      forceTargetUrl: upstreamUrl,
+    })
+  })
+}
+
 function monetiseDb(website: Website): MonetiseDb | null {
   return website.db?.drizzle ? (website.db.drizzle as unknown as MonetiseDb) : null
 }
@@ -205,7 +248,7 @@ async function siteVisit(
   req: IncomingMessage,
   requestInfo: RequestInfo,
 ): Promise<void> {
-  await maybeRecordVisit(website, req, requestInfo)
+  await enqueueVisitWrite(req as MonetiseRequest, () => maybeRecordVisit(website, req, requestInfo))
 }
 
 function readRequestBody(req: IncomingMessage): Promise<string> {
@@ -294,11 +337,9 @@ const proxy: Controller = (res, req, website, requestInfo) => {
       logVisitWriteError('siteVisit failed:', error),
     )
     ;(req as FiletypeLoggedRequest).onBlockedFiletype = (reason, upstreamUrl) => {
-      void maybeRecordVisit(website, req, requestInfo, {
-        kind: 'proxy_blocked',
-        blockReason: reason,
-        forceTargetUrl: upstreamUrl,
-      }).catch((error) => logVisitWriteError('Failed to record blocked proxy response:', error))
+      void recordBlockedProxyResponse(website, req, requestInfo, reason, upstreamUrl).catch(
+        (error) => logVisitWriteError('Failed to record blocked proxy response:', error),
+      )
     }
     handleRequest(req, res, (err?: Error) => {
       if (!err) return
