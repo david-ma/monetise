@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import {
+  aggregateBySuggestedDomain,
   banSuggestSince,
   formatBanSuggestions,
   isAlreadyBlocked,
@@ -7,6 +8,7 @@ import {
   rankBanCandidates,
   scoreHost,
   suggestBanDomain,
+  type BanCandidate,
   type HostTrafficStats,
 } from '../../models/ban-suggestions'
 
@@ -58,6 +60,19 @@ describe('suggestBanDomain / isAlreadyBlocked', () => {
   })
 })
 
+describe('aggregateBySuggestedDomain', () => {
+  test('sums log hits for www and apex under one suggested domain', () => {
+    const buckets = aggregateBySuggestedDomain([
+      stats({ host: 'www.example.com', visits: 120, distinctVisitors: 10, distinctUrls: 5 }),
+      stats({ host: 'example.com', visits: 80, distinctVisitors: 8, distinctUrls: 4 }),
+    ])
+    expect(buckets).toHaveLength(1)
+    expect(buckets[0].suggestedDomain).toBe('example.com')
+    expect(buckets[0].visits).toBe(200)
+    expect(buckets[0].hosts).toEqual(['example.com', 'www.example.com'])
+  })
+})
+
 describe('scoreHost / rankBanCandidates', () => {
   test('promotes blocked download farms and open-proxy goto hosts', () => {
     const blockedFarm = scoreHost(
@@ -102,17 +117,44 @@ describe('scoreHost / rankBanCandidates', () => {
           siteRows: 9000,
         }),
       ],
-      { includeBlocked: false, limit: 10 },
+      { includeBlocked: false, limit: 10, minVisits: 200 },
       ['arxiv.org'],
     )
     expect(ranked.map((row) => row.suggestedDomain)).toEqual(['pdf-farm.test'])
+    expect(ranked[0].visits).toBe(3000)
     expect(ranked[0].reasons.length).toBeGreaterThan(0)
+  })
+
+  test('rolls up www hits before applying minVisits', () => {
+    const ranked = rankBanCandidates(
+      [
+        stats({
+          host: 'www.merge.test',
+          visits: 120,
+          blockedVisits: 60,
+          distinctVisitors: 5,
+          distinctUrls: 40,
+        }),
+        stats({
+          host: 'merge.test',
+          visits: 100,
+          blockedVisits: 50,
+          distinctVisitors: 4,
+          distinctUrls: 30,
+        }),
+      ],
+      { includeBlocked: false, limit: 10, minVisits: 200 },
+      [],
+    )
+    expect(ranked).toHaveLength(1)
+    expect(ranked[0].suggestedDomain).toBe('merge.test')
+    expect(ranked[0].visits).toBe(220)
   })
 
   test('can include already-blocked hosts when asked', () => {
     const ranked = rankBanCandidates(
       [stats({ host: 'arxiv.org', visits: 5000, documentVisits: 4000, distinctVisitors: 10, distinctUrls: 10 })],
-      { includeBlocked: true, limit: 5 },
+      { includeBlocked: true, limit: 5, minVisits: 200 },
       ['arxiv.org'],
     )
     expect(ranked).toHaveLength(1)
@@ -125,28 +167,27 @@ describe('banSuggestSince / formatBanSuggestions', () => {
     expect(banSuggestSince(new Date('2026-10-03T15:30:00Z'), 14)).toBe('2026-09-19 00:00:00')
   })
 
-  test('prints suggested BLOCKED_DOMAINS lines', () => {
-    const text = formatBanSuggestions(
-      [
-        {
-          ...stats({
-            host: 'www.pdf-farm.test',
-            visits: 3000,
-            blockedVisits: 1000,
-            distinctVisitors: 20,
-            distinctUrls: 1000,
-            siteRows: 6000,
-          }),
-          suggestedDomain: 'pdf-farm.test',
-          alreadyBlocked: false,
-          score: 50,
-          reasons: ['URL explosion / scraper-shaped traffic'],
-        },
-      ],
-      '2026-09-19 00:00:00',
-      14,
-    )
-    expect(text).toContain("'pdf-farm.test',")
+  test('prints log-hit tallies and annotated paste lines', () => {
+    const candidate: BanCandidate = {
+      suggestedDomain: 'pdf-farm.test',
+      hosts: ['pdf-farm.test', 'www.pdf-farm.test'],
+      visits: 3000,
+      distinctVisitors: 20,
+      distinctUrls: 1000,
+      blockedVisits: 1000,
+      documentVisits: 0,
+      gotoVisits: 0,
+      reports: 0,
+      siteRows: 6000,
+      alreadyBlocked: false,
+      score: 50,
+      reasons: ['URL explosion / scraper-shaped traffic'],
+    }
+    const text = formatBanSuggestions([candidate], '2026-09-19 00:00:00', 14)
+    expect(text).toContain('Tally (highest log hits among scored candidates):')
+    expect(text).toContain('3,000  pdf-farm.test  (2 hosts)')
+    expect(text).toContain('~3,000 log hits')
+    expect(text).toContain("'pdf-farm.test',  // ~3,000 log hits, 2 hosts")
     expect(text).toContain('why: URL explosion / scraper-shaped traffic')
   })
 })

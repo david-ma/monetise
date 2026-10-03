@@ -2,4 +2,6 @@
 export const BLOCKED_DOMAINS = [
   'academia.edu',
   'arxiv.org',
+  'linkedin.com',
+  'web.archive.org',
 ]

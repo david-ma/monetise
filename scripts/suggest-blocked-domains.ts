@@ -15,7 +15,8 @@ import {
 const args = process.argv.slice(2)
 if (args.includes('--help')) {
   console.log(`Usage: bun scripts/suggest-blocked-domains.ts [--days=14] [--limit=40] [--min-visits=200] [--include-blocked]
-Read-only. Ranks proxied hosts by volume, block rate, open-proxy goto use, URL explosion and missing monetisation reports.
+Read-only. Rolls www/apex hosts into suggested ban domains and tallies server_visits log hits.
+Ranks by volume, block rate, open-proxy goto use, URL explosion and missing monetisation reports.
 Review suggestions before editing config/blocked-domains.ts.`)
 } else {
   let db: Awaited<ReturnType<typeof createConnection>> | undefined
