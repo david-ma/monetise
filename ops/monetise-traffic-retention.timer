@@ -1,0 +1,11 @@
+[Unit]
+Description=Nightly Monetise traffic retention
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+RandomizedDelaySec=15min
+Persistent=true
+Unit=monetise-traffic-retention.service
+
+[Install]
+WantedBy=timers.target

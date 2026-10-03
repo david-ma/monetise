@@ -13,7 +13,8 @@ import Handlebars from 'handlebars'
 
 import { monetPaintingUrl, parseMonetRequestPath } from './assets'
 import { rejectProxyRequest } from './proxy-target'
-import { mirrorTargetRawFromRequest } from './mirror-target'
+import { blockFiletypeResponse, type FiletypeLoggedRequest } from './proxy-filetypes'
+import { mirrorTargetRawFromRequest, rejectMirrorRequest } from './mirror-target'
 import {
   mirrorCorsMiddleware,
   rejectMirrorResponse,
@@ -28,10 +29,12 @@ import { paintings, serverVisits, sites, visitors as visitorsTable, monetisation
 import {
   getAllSites,
   getHeavyProxyVisitors,
+  getMirrorVisitors,
   getLikelyRealVisitors,
   getRecentVisitSample,
   getRecentVisitsForIp,
   getVisitorDashboardStats,
+  convertServerVisitToBlocked,
   recordMonetisationReport,
   recordServerVisit,
   VISITOR_DASHBOARD_SAMPLE_LIMIT,
@@ -69,6 +72,7 @@ const unblockerConfig = {
   // Omit `host` so unblocker uses the request Host (www vs apex) for referer recovery.
   prefix: '/proxy/',
   responseMiddleware: [
+    blockFiletypeResponse,
     noStoreProxyMiddleware,
     pageInjectionMiddleware,
     clientScriptsInjector('/proxy/'),
@@ -155,7 +159,20 @@ function rejectBlockedProxyTarget(
   return true
 }
 
-type MonetiseRequest = IncomingMessage & { monetiseVisitToken?: string }
+type MonetiseRequest = IncomingMessage & {
+  monetiseVisitToken?: string
+  /** Serialises document insert vs filetype-block conversion for one request. */
+  monetiseVisitWrite?: Promise<unknown>
+}
+
+function enqueueVisitWrite(req: MonetiseRequest, work: () => Promise<unknown>): Promise<unknown> {
+  const next = (req.monetiseVisitWrite ?? Promise.resolve()).then(work, work)
+  req.monetiseVisitWrite = next.then(
+    () => undefined,
+    () => undefined,
+  )
+  return next
+}
 
 async function maybeRecordVisit(
   website: Website,
@@ -193,6 +210,35 @@ async function maybeRecordVisit(
   return visitToken
 }
 
+/** Prefer converting the prior proxy_document row; otherwise insert proxy_blocked. */
+async function recordBlockedProxyResponse(
+  website: Website,
+  req: IncomingMessage,
+  requestInfo: RequestInfo,
+  reason: string,
+  upstreamUrl: string,
+): Promise<void> {
+  const db = monetiseDb(website)
+  if (!db) return
+
+  const monetiseReq = req as MonetiseRequest
+  await enqueueVisitWrite(monetiseReq, async () => {
+    const existingToken = monetiseReq.monetiseVisitToken
+    if (existingToken) {
+      const converted = await convertServerVisitToBlocked(db, existingToken, reason)
+      if (converted) {
+        monetiseReq.monetiseVisitToken = undefined
+        return
+      }
+    }
+    await maybeRecordVisit(website, req, requestInfo, {
+      kind: 'proxy_blocked',
+      blockReason: reason,
+      forceTargetUrl: upstreamUrl,
+    })
+  })
+}
+
 function monetiseDb(website: Website): MonetiseDb | null {
   return website.db?.drizzle ? (website.db.drizzle as unknown as MonetiseDb) : null
 }
@@ -202,7 +248,7 @@ async function siteVisit(
   req: IncomingMessage,
   requestInfo: RequestInfo,
 ): Promise<void> {
-  await maybeRecordVisit(website, req, requestInfo)
+  await enqueueVisitWrite(req as MonetiseRequest, () => maybeRecordVisit(website, req, requestInfo))
 }
 
 function readRequestBody(req: IncomingMessage): Promise<string> {
@@ -290,6 +336,11 @@ const proxy: Controller = (res, req, website, requestInfo) => {
     void siteVisit(website, req, requestInfo).catch((error) =>
       logVisitWriteError('siteVisit failed:', error),
     )
+    ;(req as FiletypeLoggedRequest).onBlockedFiletype = (reason, upstreamUrl) => {
+      void recordBlockedProxyResponse(website, req, requestInfo, reason, upstreamUrl).catch(
+        (error) => logVisitWriteError('Failed to record blocked proxy response:', error),
+      )
+    }
     handleRequest(req, res, (err?: Error) => {
       if (!err) return
       console.error('Proxy error:', req.url, err)
@@ -348,11 +399,13 @@ const visitorsPage: Controller = (res, _req, website, requestInfo) => {
           getVisitorDashboardStats(db, windowMs, VISITOR_DASHBOARD_SAMPLE_LIMIT, sample),
           getLikelyRealVisitors(db, 50),
           getHeavyProxyVisitors(db, windowMs, 50, VISITOR_DASHBOARD_SAMPLE_LIMIT, sample),
-        ]).then(([stats, likelyReal, heavyProxy]) => ({
+          getMirrorVisitors(db, windowMs, 50, VISITOR_DASHBOARD_SAMPLE_LIMIT, sample),
+        ]).then(([stats, likelyReal, heavyProxy, mirrorVisitors]) => ({
           mode: 'index' as const,
           stats,
           likelyReal,
           heavyProxy,
+          mirrorVisitors,
         })),
       )
 
@@ -414,6 +467,13 @@ const visitorsPage: Controller = (res, _req, website, requestInfo) => {
             uaShort: (row.userAgent || '').slice(0, 80),
             ipHref: `/visitors?ip=${encodeURIComponent(row.ip)}`,
           })),
+          mirrorVisitors: page.mirrorVisitors.map((row) => ({
+            ...row,
+            ...geo(row.ip),
+            lastSeen: row.lastSeen ? row.lastSeen.toLocaleString('en-AU') : '',
+            uaShort: (row.userAgent || '').slice(0, 80),
+            ipHref: `/visitors?ip=${encodeURIComponent(row.ip)}`,
+          })),
           rateLimit: {
             ...rate,
             windowLabel: `${Math.round(rate.windowMs / (60 * 60 * 1000))}h`,
@@ -457,7 +517,7 @@ function monetAsset(res: ServerResponse, req: IncomingMessage): void {
 
 const monetAssetController: Controller = (res, req) => monetAsset(res, req)
 
-const mirror: Controller = (res, req) => {
+const mirror: Controller = (res, req, website, requestInfo) => {
   let url = req.url ?? ''
   const sections = url.split('/mirror/')
   url = req.url = `${sections[0]}/mirror/${sections.pop()}`
@@ -468,6 +528,11 @@ const mirror: Controller = (res, req) => {
     return
   }
 
+  const reason = rejectMirrorRequest(url)
+  void maybeRecordVisit(website, req, requestInfo, reason ? {
+    kind: 'mirror_blocked',
+    blockReason: reason,
+  } : undefined).catch((error) => logVisitWriteError('Failed to record mirror visit:', error))
   if (rejectMirrorResponse(res, url)) return
 
   if (sections.length > 2) {

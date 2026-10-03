@@ -15,6 +15,23 @@ import {
 
 export type MonetiseDb = MySql2Database<any>
 
+/** Lock contention with retention is transient; each retry starts a new transaction. */
+export async function withTrafficTransaction<T>(db: MonetiseDb, work: (tx: MonetiseDb) => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try { return await db.transaction(work) } catch (error) {
+      let cause: unknown = error
+      let retry = false
+      for (let depth = 0; depth < 6 && cause && typeof cause === 'object'; depth++) {
+        const detail = cause as { errno?: number; cause?: unknown }
+        if (detail.errno === 1213 || detail.errno === 1205) { retry = true; break }
+        cause = detail.cause
+      }
+      if (!retry || attempt >= 2) throw error
+      await new Promise((resolve) => setTimeout(resolve, 10 * (attempt + 1)))
+    }
+  }
+}
+
 /**
  * True when an error (or any error in its `cause` chain) is MySQL
  * `ER_DUP_ENTRY` (errno 1062). Used for check-then-insert races on unique keys.
@@ -91,6 +108,7 @@ export async function findOrCreateSite(
     .from(sites)
     .where(and(eq(sites.url, targetUrl), isNull(sites.deletedAt)))
     .limit(1)
+    .for('update')
 
   if (existing[0]) {
     return existing[0]
@@ -116,7 +134,7 @@ export async function findOrCreateSite(
     }
   }
 
-  const fallback = await db.select().from(sites).where(eq(sites.url, targetUrl)).limit(1)
+  const fallback = await db.select().from(sites).where(eq(sites.url, targetUrl)).limit(1).for('update')
   if (!fallback[0]) {
     throw new Error(`Failed to find or create site for ${targetUrl}`)
   }
@@ -133,6 +151,7 @@ export async function findOrCreateVisitor(
     .from(visitors)
     .where(and(eq(visitors.ip, ip), isNull(visitors.deletedAt)))
     .limit(1)
+    .for('update')
 
   if (existing[0]) {
     return maybeUpdateVisitorUserAgent(db, existing[0], userAgent)
@@ -157,7 +176,7 @@ export async function findOrCreateVisitor(
     }
   }
 
-  const fallback = await db.select().from(visitors).where(eq(visitors.ip, ip)).limit(1)
+  const fallback = await db.select().from(visitors).where(eq(visitors.ip, ip)).limit(1).for('update')
   if (!fallback[0]) {
     throw new Error(`Failed to find or create visitor for ${ip}`)
   }
@@ -165,6 +184,50 @@ export async function findOrCreateVisitor(
 }
 
 export async function recordServerVisit(
+  db: MonetiseDb,
+  input: RecordServerVisitInput,
+  ip: string,
+  userAgent: string,
+): Promise<{ visitToken?: string; serverVisitId?: number }> {
+  // Hold parent locks until the visit exists; orphan retention runs concurrently.
+  return withTrafficTransaction(db, (tx) => recordServerVisitInTransaction(tx, input, ip, userAgent))
+}
+
+/**
+ * When a proxied document navigation is later MIME/filetype-blocked, flip the
+ * already-inserted proxy_document row to proxy_blocked instead of inserting a
+ * second visit. Clears the unused visitToken (page HTML never reached the client).
+ */
+export async function convertServerVisitToBlocked(
+  db: MonetiseDb,
+  visitToken: string,
+  blockReason: string,
+): Promise<boolean> {
+  return withTrafficTransaction(db, async (tx) => {
+    const rows = await tx
+      .select({ id: serverVisits.id, kind: serverVisits.kind })
+      .from(serverVisits)
+      .where(and(eq(serverVisits.visitToken, visitToken), isNull(serverVisits.deletedAt)))
+      .limit(1)
+      .for('update')
+
+    const row = rows[0]
+    if (!row?.id || row.kind !== 'proxy_document') return false
+
+    await tx
+      .update(serverVisits)
+      .set({
+        kind: 'proxy_blocked',
+        blockReason,
+        visitToken: null,
+      })
+      .where(eq(serverVisits.id, row.id))
+
+    return true
+  })
+}
+
+async function recordServerVisitInTransaction(
   db: MonetiseDb,
   input: RecordServerVisitInput,
   ip: string,
@@ -196,11 +259,19 @@ export async function recordMonetisationReport(
   db: MonetiseDb,
   input: MonetisationReportInput,
 ): Promise<MonetisationReport | null> {
+  return withTrafficTransaction(db, (tx) => recordMonetisationReportInTransaction(tx, input))
+}
+
+async function recordMonetisationReportInTransaction(
+  db: MonetiseDb,
+  input: MonetisationReportInput,
+): Promise<MonetisationReport | null> {
   const visitRows = await db
     .select()
     .from(serverVisits)
     .where(and(eq(serverVisits.visitToken, input.visitToken), isNull(serverVisits.deletedAt)))
     .limit(1)
+    .for('update')
 
   const serverVisit = visitRows[0]
   if (!serverVisit?.id) {
@@ -262,7 +333,8 @@ export type VisitorWithVisits = Visitor & {
 }
 
 function visitBadge(kind: string, hasReport: boolean): VisitorVisitRow['badge'] {
-  if (kind === 'homepage_probe' || kind === 'proxy_blocked') return kind === 'proxy_blocked' ? 'blocked' : 'probe'
+  if (kind === 'proxy_blocked' || kind === 'mirror_blocked') return 'blocked'
+  if (kind === 'homepage_probe') return 'probe'
   if (hasReport) return 'browser'
   return 'request'
 }
@@ -301,6 +373,7 @@ export const VISITOR_DASHBOARD_SAMPLE_LIMIT = 5000
 export type RecentVisitSampleRow = {
   visitorId: number
   visitedAt: Date | null
+  kind: string
 }
 
 /** Newest visits in the window — this is where LIMIT must sit (before any GROUP BY). */
@@ -314,6 +387,7 @@ export async function getRecentVisitSample(
     .select({
       visitorId: serverVisits.visitorId,
       visitedAt: serverVisits.visitedAt,
+      kind: serverVisits.kind,
     })
     .from(serverVisits)
     .where(and(gte(serverVisits.visitedAt, since), isNull(serverVisits.deletedAt)))
@@ -322,7 +396,7 @@ export async function getRecentVisitSample(
 
   return sample
     .filter((row) => row.visitorId != null)
-    .map((row) => ({ visitorId: row.visitorId!, visitedAt: row.visitedAt }))
+    .map((row) => ({ visitorId: row.visitorId!, visitedAt: row.visitedAt, kind: row.kind }))
 }
 
 /**
@@ -412,9 +486,34 @@ export async function getHeavyProxyVisitors(
 
   const rows = sample ?? (await getRecentVisitSample(db, windowMs, sampleLimit))
 
+  return rankVisitorSample(db, rows.filter((row) =>
+    !realIds.has(row.visitorId) && !isMirrorVisit(row.kind),
+  ), limit)
+}
+
+function isMirrorVisit(kind: string): boolean {
+  return kind === 'mirror_request' || kind === 'mirror_blocked'
+}
+
+/** Mirror usage stays separate, including IPs that also have Monetise browser reports. */
+export async function getMirrorVisitors(
+  db: MonetiseDb,
+  windowMs: number = 12 * 60 * 60 * 1000,
+  limit: number = 50,
+  sampleLimit: number = VISITOR_DASHBOARD_SAMPLE_LIMIT,
+  sample?: RecentVisitSampleRow[],
+): Promise<HeavyProxyVisitorRow[]> {
+  const rows = sample ?? (await getRecentVisitSample(db, windowMs, sampleLimit))
+  return rankVisitorSample(db, rows.filter((row) => isMirrorVisit(row.kind)), limit)
+}
+
+async function rankVisitorSample(
+  db: MonetiseDb,
+  rows: RecentVisitSampleRow[],
+  limit: number,
+): Promise<HeavyProxyVisitorRow[]> {
   const byVisitor = new Map<number, { visitCount: number; lastSeen: Date | null }>()
   for (const row of rows) {
-    if (realIds.has(row.visitorId)) continue
     const current = byVisitor.get(row.visitorId)
     if (!current) {
       byVisitor.set(row.visitorId, { visitCount: 1, lastSeen: row.visitedAt })
