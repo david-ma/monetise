@@ -15,6 +15,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:compress": "bun scripts/traffic-retention.ts --apply --days=30 --batch-size=1000 --max-batches=100",
+    "db:ban-suggest": "bun scripts/suggest-blocked-domains.ts",
     "smugmug:fetch": "bun scripts/analyse_smugmug.ts"
   },
   "keywords": [],

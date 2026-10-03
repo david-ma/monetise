@@ -13,6 +13,13 @@ domain blocks itself and all its subdomains on both `/proxy/` and `/mirror/`.
 Use domain names only (for example, `academia.edu`), without schemes or paths.
 Commit and deploy the change, restarting the application to load the updated list.
 
+To rank busy proxied hosts from recent visit data (read-only hints, not auto-bans):
+
+```sh
+bun db:ban-suggest
+# bun scripts/suggest-blocked-domains.ts --days=14 --limit=40 --min-visits=200
+```
+
 ## Blocked downloads
 
 `config/proxy-target.ts` contains the `BLOCK_FILETYPES` toggle (enabled by default)
