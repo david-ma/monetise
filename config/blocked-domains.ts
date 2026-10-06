@@ -5,4 +5,5 @@ export const BLOCKED_DOMAINS = [
   'linkedin.com',
   'web.archive.org',
   'wikipedia.org',
+  'google.com',
 ]
